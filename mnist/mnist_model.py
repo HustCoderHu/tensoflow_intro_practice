@@ -103,9 +103,10 @@ class lenet():
     with tf.name_scope('fc1') :
       n_in = n_out
       n_out = 1024
-      size_per_batch = out.shape[1] * out.shape[2] * out.shape[3]
+      # size_per_batch = out.shape[1] * out.shape[2] * out.shape[3]
 
-      flat_out = tf.reshape(out, [-1, size_per_batch])
+      # flat_out = tf.reshape(out, [-1, size_per_batch])
+      flat_out = tf.layers.Flatten()(out)
       out = tf.layers.dense(flat_out, n_out, activation=tf.nn.relu,
                             use_bias=False, kernel_initializer=init)
     # Dropout - controls the complexity of the model, prevents co-adaptation of
