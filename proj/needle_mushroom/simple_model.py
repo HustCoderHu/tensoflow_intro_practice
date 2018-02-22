@@ -81,9 +81,11 @@ class Simplest:
     return out
   
   def fc(self, x, n_out):
-    if len(x.shape) == 4:
-      size_per_batch = x.shape[1] * x.shape[2] * x.shape[3]
-      x = tf.reshape(x, [-1, size_per_batch])
+    # if len(x.shape) == 4:
+    #   size_per_batch = x.shape[1] * x.shape[2] * x.shape[3]
+    #   x = tf.reshape(x, [-1, size_per_batch])
+    if len(x.shape) > 2:
+      x = tf.layers.Flatten()(x)
     w_initer=tc.layers.xavier_initializer(dtype=self.dtype)
     out = tf.layers.dense(x, n_out, activation=None,
                             use_bias=False, kernel_initializer=w_initer)
