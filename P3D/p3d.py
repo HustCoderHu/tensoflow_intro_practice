@@ -24,13 +24,13 @@ class p3d():
     self.conv1_custom = nn.Conv3d(self.input_channel, 64, kernel_size=(1,7,7), stride=(1,2,2),
                                 padding=(0,3,3), bias=False)
     self.conv1_custom = tl.Conv3D(filters=64, kernel_size=(1,7,7), strides=(1,2,2), 
-        padding='same', use_bias=False, kernel_initializer=self.w_initer)
+        padding=self.layer_data_format, use_bias=False, kernel_initializer=self.w_initer)
     
     self.depth_3d = sum(layers[:3])# C3D layers are only (res2,res3,res4),  res5 is C2D
 
     axis = 1 if self.data_format=="NCHW" else -1
-    self.bn1 = tl.BatchNormalization(axis=axis, scale=False,
-        training=self.is_training, fused=True)
+    self.bn1 = tl.BatchNormalization(axis=axis, scale=False fused=True)
+    # out = self.bn(in, training=True) False for eval
     self.cnt = 0
     self.relu = lambda input : nn.relu(input)
     self.maxpool = tl.MaxPooling3D(pool_size=(2, 3, 3), strides=2, padding='valid',
