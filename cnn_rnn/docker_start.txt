@@ -1,0 +1,13 @@
+docker run --runtime=nvidia -it -p 80:6006 \
+  --mount type=bind,source=/etc/localtime,target=/etc/localtime,readonly \
+  --mount type=bind,source=/home/,target=/home \
+  --name xx_tf1.5 \
+  tensorflow/tensorflow:1.5.0-gpu-py3 \
+  bash
+  
+docker start yanrui_tf1.5 & docker exec \ 
+  -d yanrui_tf1.5 bash \ 
+  -c "cd /home; 
+cat /proc/version > version.txt 2&1; 
+cd sess_log; 
+tensorboard -logdir ."

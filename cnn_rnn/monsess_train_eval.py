@@ -28,7 +28,7 @@ def main():
 
 
   # ------------------------------ prepare input ------------------------------
-  dset = dataset.MyDataset(train_dir, eval_dir)
+  dset = dataset.MyDataset(train_dir, eval_dir, resize=(250, 250))
   prefetch_batch = None
   iter_dict = {
     'train': dset.train(train_batchsz, prefetch_batch),
@@ -56,7 +56,7 @@ def main():
   # eval_x.set_shape([eval_batchsz, 200, 250, 3])
 
   # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ build graph \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
-  model = smodel.Simplest('NCHW')
+  model = smodel.CNN('NCHW')
   # model = smodel.Simplest('NHWC')
   logits = model(inputx)
   with tf.name_scope('cross_entropy'):
