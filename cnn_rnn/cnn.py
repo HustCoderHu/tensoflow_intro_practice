@@ -105,6 +105,7 @@ class CNN:
 
     axis = 1 if self.data_format=="NCHW" else -1
     self.bn = tl.BatchNormalization(axis=axis, scale=False, fused=True)
+    self.feature2rnn = 0
     # out = self.bn(in, training=True) False for eval
 
     return
@@ -144,45 +145,14 @@ class CNN:
 
     out = tl.Flatten()(out)
     out = self.FC(128)(out)
+    
+    self.feature2rnn = out
+
     out = tl.Dropout(0.5)(out, training=self.training)
     out = self.FC(32)(out)
     pr_shape(out)
     
     return out
-
-class RNN:
-  def __init__(self, rnntype, n_hidden, n_classes):
-    self.rnntype = rnntype
-    self.n_hidden = n_hidden
-    self.n_classes = n_classes
-
-  def __call__(self, inputs):
-    pr_shape = lambda var : print(var.shape)
-
-    if rnntype == "GRU" :
-      print("rnntype: " + rnntype)
-      cell = rnn.GRUCell(n_hidden)
-    else :
-      print("rnntype: " + rnntype)
-      cell = rnn.LSTMCell(n_hidden)
-    
-    initial_state = cell.zero_state(inputs.shape[0], tf.float32)
-
-    # dynamic_rnn inputs shape = [batch_size, max_time, ...]
-    # outs shape = [batch_size, max_time, cell.output_size]
-    # states shape = [batch_size, cell.state_size]
-    n_step = int(inputs.shape[1]) # n_step
-
-    outs, states = nn.dynamic_rnn(cell, out, sequence_length=(n_step, ),
-      initial_state=initial_state, dtype=tf.float32)
-    final_state = states[-1] # list len = n_steps
-    pr_shape(states) # (n_hidden,)
-
-    FC = tl.Dense(self.n_classes, use_bias=True, 
-        kernel_initializer=tc.layers.xavier_initializer(tf.float32))
-    outs = FC(final_state)
-
-    return outs
 
 if __name__ == '__main__':
   model = Simplest(8)

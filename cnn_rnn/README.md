@@ -38,3 +38,13 @@ TODO
   > 每块通过分类网络输出特征向量 `shape = (max_steps, fc_out)`, 即为一个样本
 - RNN
   > 将上面的得到的样本输入 RNN ，输出预测的趋势
+
+# 4 文件说明
+- cnn
+  > 卷积网络定义
+- dataset
+  > cnn 输入 pipeline
+- rnn
+  > 循环神经网络定义
+- rnn_dataset
+  > rnn 输入 pipeline
