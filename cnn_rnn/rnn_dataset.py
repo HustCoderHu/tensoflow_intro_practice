@@ -53,7 +53,8 @@ class MyDataset():
       per_class_dir = pjoin(subset_dir, class_name)
       per_class_npylist = os.listdir(per_class_dir)
       print('{}: total {}'.format(class_name, len(per_class_npylist)))
-      _list = [pjoin(per_class_dir, i) for i in per_class_npylist]
+      _list = [pjoin(per_class_dir, i) for i in per_class_npylist
+          if path.splitext(i)[1] == '.npy']
       for _npy in _list:
         example_list.append({'npy': _npy, 
             'label': self.dict_name_id[class_name]})
