@@ -32,6 +32,7 @@ def main():
 
     perClassDir = pj(dstDir, labelList['raging'])
     dstFramesDir = pj(perClassDir, formatted)
+    # dstDir/raging/077
     genStepedSeq(srcFramesDir, dstFramesDir,
           fire_begin_frame, fire_biggest_frame, 16, 128)
     
@@ -64,7 +65,7 @@ def main():
 
 def genStepedSeq(srcFramesDir, dstFramesDir, startFrame, endFrame, seqLen, vecSize, step=1):
   # flist = os.listdir(srcFramesDir)
-  # flist = [f for f in flist if path.split[f][1]=='.npy']
+  # flist = [f for f in flist if path.splitext[f][1]=='.npy']
 
   ndaList = []
   for i in range(startFrame, endFrame):
