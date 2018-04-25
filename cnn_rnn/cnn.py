@@ -46,7 +46,7 @@ class CNN:
       out = tf.reduce_mean(x, (2, 3))
     return out
   
-  def __call__(self, inputs):
+  def __call__(self, inputs, castFromUint8=True):
     # self.training
     pr_shape = lambda var : print(var.shape)
     
@@ -55,9 +55,9 @@ class CNN:
     if self.data_format == 'NCHW':
       inputs = tf.transpose(inputs, [0, 3, 1, 2])
     # print(inputs.shape.dims)
-
-    out = tf.cast(inputs, self.dtype)
-    out = self.Conv2D(32, 5)(out)
+    if castFromUint8:
+      inputs = tf.cast(inputs, self.dtype)
+    out = self.Conv2D(32, 5)(inputs)
     out = tf.nn.relu(out)
     out = self.Pool2D(2, 2, 'max')(out)
 
