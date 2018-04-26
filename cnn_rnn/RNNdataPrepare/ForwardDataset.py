@@ -4,20 +4,29 @@ from os.path import join as pj
 import tensorflow as tf
 
 class FD():
-  def __init__(self, srcDir, videoId):
+  def __init__(self, srcDir, videoId=''):
     self.srcDir = srcDir
     self.videoId = videoId
     self.resize = (250, 250)
   
   def __call__(self, batch_sz, prefetch_batch=None):
-    video_dir = '%03d' % self.videoId
+    video_dir = self.videoId
+    # video_dir = '%03d' % self.videoId
     perFramesDir = pj(self.srcDir, video_dir)
+    print('--- perFramesDir: ' + perFramesDir)
     jpgBasenameList = os.listdir(perFramesDir)
+    jpgBasenameList.sort()
+    print('--- len(jpgBasenameList): %d' % len(jpgBasenameList))
+    print('--- jpgBasenameList[0:5]: %s' % jpgBasenameList[0:5])
     # jpgBasenameList = jpgBasenameList[0:6]
-    jpgBasenameList = [f for f in jpgBasenameList if path.splitext(f)[1]=='.jpg']
 
-    img_list = [pj(perFramesDir, f) for f in jpgBasenameList]
-    print('video %d, jpg num: %d' % (self.videoId, len(img_list)) )
+    img_list = []
+    for f in jpgBasenameList:
+      abspath = pj(perFramesDir, f)
+      if path.isfile(abspath) and path.splitext(f)[1]=='.jpg':
+        img_list.append(abspath)
+
+    print('video %s, jpg num: %d' % (self.videoId, len(img_list)) )
 
     dataset = tf.data.Dataset().from_tensor_slices(img_list)
     dset = dataset.map(self._mapfn_resize, num_parallel_calls=os.cpu_count())
@@ -44,7 +53,7 @@ def tst():
   print(path.basename(fname)) # 000005.jpg
   return
 
-  dataset = FD(srcDir, 11)
+  dataset = FD(srcDir, '011')
   resized, filename = dataset(4, prefetch_batch=None)
   sess_conf = tf.ConfigProto()
   sess_conf.gpu_options.allow_growth = True
