@@ -7,7 +7,7 @@ import os.path as path
 from os.path import join as pj
 import tensorflow as tf
 print(os.getcwd())
-cwd = r'/home/tensorflow_intro_practice'
+cwd = r'/home/hzx/tensorflow_intro_practice'
 # cwd = r'E:\github_repo\tensoflow_intro_practice'
 sys.path.append(pj(cwd, 'cnn_rnn'))
 
@@ -34,8 +34,8 @@ def main():
   global t_logits
   global model
   
-  srcDir = r'/home/all_data'
-  dstDir = r'/home/all_data/77featureVectorNpy'
+  srcDir = r'/home/hzx/all_data'
+  dstDir = r'/home/hzx/all_data/77featureVectorNpy'
   # srcDir = r'D:\Lab408\cnn_rnn\src_dir'
   # dstDir = r'D:\Lab408\cnn_rnn\dst_dir'
   
@@ -66,7 +66,7 @@ def main():
   
   saver = tf.train.Saver()
   
-  ckptDir = r'/home/tensorflow_intro_practice/cnn_rnn/cnn_fire_ckpt'
+  ckptDir = r'/home/hzx/tensorflow_intro_practice/cnn_rnn/cnn_fire_ckpt'
   # ckptDir = r'D:\Lab408\monitored_sess_log_all_two_4.17\monitored_sess_log\ckpts'
   # ckptDir = r'D:\Lab408\monitored_sess_log_all_two_4.17\ckpt'
 

@@ -103,7 +103,14 @@ def tst():
   vedio_dir = '11'
   vedio_dir = '%03d' % int(vedio_dir)
   print(vedio_dir)
-  
+  npyDir = r'D:\Lab408\cnn_rnn\77featureVectorNpy'
+  videoIdList = range(1, 78)
+  for videoId in videoIdList:
+    vId = '%03d.npy' % videoId
+    f = pj(npyDir, vId)
+    nda = np.load(f)
+    print('%s shape[0]: %d' % (f, nda.shape[0]))
+
   # for i in range(0, 20):
   #   fname = '%06d' % i
   #   print(fname)
@@ -111,4 +118,5 @@ def tst():
   # getOne('', '', '', 16, 128, 'ff.npy')
 
 if __name__ == '__main__':
-  main()
+  tst()
+  # main()

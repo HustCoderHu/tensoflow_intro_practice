@@ -12,8 +12,8 @@ import tensorflow as tf
 import ForwardDataset
 
 print(os.getcwd())
-cwd = r'/home/tensorflow_intro_practice'
-cwd = r'E:\github_repo\tensorflow_intro_practice'
+cwd = r'/home/hzx/tensorflow_intro_practice'
+# cwd = r'E:\github_repo\tensorflow_intro_practice'
 sys.path.append(pj(cwd, 'cnn_rnn'))
 
 import cnn
@@ -32,9 +32,6 @@ import cnn
 # l = os.listdir(os.getcwd())
 # print(l)
 
-t_logits = 0
-model = 0
-
 def main():
   videoIdList = range(1, 78)
   videoIdList = range(1, 5)
@@ -43,30 +40,28 @@ def main():
   videoIdList = range(13, 31)
   videoIdList = range(31, 78)
   for videoId in videoIdList:
-    p = mp.Process(target=handleAvideo, args=(videoId,))
+    vId = '%03d' % videoId
+    p = mp.Process(target=handleAvideo, args=(vId,))
     p.start()
     p.join()
   
   print('--- end')
 
-def handleAvideo(videoId):
-  global t_logits
-  global model
-  
-  srcDir = r'/home/all_data'
-  dstDir = r'/home/all_data/77featureVectorNpy'
-  srcDir = r'D:\Lab408\cnn_rnn\src_dir'
-  dstDir = r'D:\Lab408\cnn_rnn\dst_dir'
+def handleAvideo(videoId=''):  
+  srcDir = r'/home/hzx/all_data'
+  dstDir = r'/home/hzx/all_data/77featureVectorNpy'
+  # srcDir = r'D:\Lab408\cnn_rnn\src_dir'
+  # dstDir = r'D:\Lab408\cnn_rnn\dst_dir'
 
   # videoIdList = range(11, 12)
   if not path.exists(dstDir):
     os.mkdir(dstDir)
   
   dataset = ForwardDataset.FD(srcDir, videoId)
-  model = cnn.CNN(data_format = 'NHWC')
-  # model = cnn.CNN(data_format = 'NCHW')
+  # model = cnn.CNN(data_format = 'NHWC')
+  model = cnn.CNN(data_format = 'NCHW')
 
-  inputx, t_absName = dataset(batch_sz=30, prefetch_batch=3)
+  inputx, t_absName = dataset(batch_sz=100, prefetch_batch=5)
   # print('--- inputx shape: %s' % inputx.shape)
   # print('--- t_absName shape: %s' % t_absName.shape)
   t_logits = model(inputx)
@@ -76,9 +71,9 @@ def handleAvideo(videoId):
   
   saver = tf.train.Saver()
   
-  ckptDir = r'/home/tensorflow_intro_practice/cnn_rnn/cnn_fire_ckpt'
+  ckptDir = r'/home/hzx/tensorflow_intro_practice/cnn_rnn/cnn_fire_ckpt'
   # ckptDir = r'D:\Lab408\monitored_sess_log_all_two_4.17\monitored_sess_log\ckpts'
-  ckptDir = r'D:\Lab408\monitored_sess_log_all_two_4.17\ckpt'
+  # ckptDir = r'D:\Lab408\monitored_sess_log_all_two_4.17\ckpt'
 
   # state = tf.train.get_checkpoint_state(ckptDir)
   # print(type(state))
@@ -86,11 +81,12 @@ def handleAvideo(videoId):
 
   latestCkpt = tf.train.latest_checkpoint(ckptDir)
   # print(latestCkpt)
+  # D:/Lab408/monitored_sess_log_all_two_4.17/ckpt/model.ckpt-25700
   # return
 
   sess_conf = tf.ConfigProto()
   sess_conf.gpu_options.allow_growth = True
-  sess_conf.gpu_options.per_process_gpu_memory_fraction = 0.9
+  # sess_conf.gpu_options.per_process_gpu_memory_fraction = 0.9
   
   with tf.Session(config= sess_conf) as sess:
     # sess.run(tf.global_variables_initializer())
@@ -112,7 +108,7 @@ def handleAvideo(videoId):
         break
     
     print('concat shape: %d' % concat.shape[0])
-    np.save(pj(dstDir, '%03d' % videoId), concat)
+    np.save(pj(dstDir, videoId), concat)
   return
 
 def tst():
@@ -144,5 +140,5 @@ def tst():
 
 if __name__ == '__main__':
   # tst()
-  # handleAvideo(11)
+  # handleAvideo('011')
   main()
