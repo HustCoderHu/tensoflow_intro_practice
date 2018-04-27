@@ -95,7 +95,7 @@ def handleAvideo(videoId=''):
     while True:
       try:
         feature2rnn, fname = sess.run([model.feature2rnn, t_absName])
-        concat = np.concatenate((concat, feature2rnn))
+        concat = np.concatenate((concat, feature2rnn)) # 拼接每帧 shape=(帧数, fc_out)
         print(fname[-1])
 
         # fname = sess.run(t_absName)
@@ -108,7 +108,7 @@ def handleAvideo(videoId=''):
         break
     
     print('concat shape: %d' % concat.shape[0])
-    np.save(pj(dstDir, videoId), concat)
+    np.save(pj(dstDir, videoId), concat) # 所有特征向量
   return
 
 def tst():
