@@ -20,6 +20,7 @@ class FD():
     print('--- jpgBasenameList[0:5]: %s' % jpgBasenameList[0:5])
     # jpgBasenameList = jpgBasenameList[0:6]
 
+    # 拼接成 绝对路径 /path/to/xxx.jpg
     img_list = []
     for f in jpgBasenameList:
       abspath = pj(perFramesDir, f)
@@ -28,6 +29,7 @@ class FD():
 
     print('video %s, jpg num: %d' % (self.videoId, len(img_list)) )
 
+    # 创建 Dataset
     dataset = tf.data.Dataset().from_tensor_slices(img_list)
     dset = dataset.map(self._mapfn_resize, num_parallel_calls=os.cpu_count())
     dset = dset.batch(batch_sz)
