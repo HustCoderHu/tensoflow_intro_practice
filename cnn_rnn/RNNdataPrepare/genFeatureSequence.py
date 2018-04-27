@@ -34,12 +34,12 @@ def main():
     dstFramesDir = pj(perClassDir, formatted)
     # dstDir/raging/077
     genStepedSeq(srcFramesDir, dstFramesDir,
-          fire_begin_frame, fire_biggest_frame, 16, 128)
+          fire_begin_frame, fire_biggest_frame, 16)
     
     perClassDir = pj(dstDir, labelList['weaking'])
     dstFramesDir = pj(perClassDir, formatted)
     genStepedSeq(srcFramesDir, dstFramesDir,
-          fire_biggest_frame, fire_over_frame, 16, 128)
+          fire_biggest_frame, fire_over_frame, 16)
 
     # handleOne(it, srcDir, dstDir)
   return
@@ -63,34 +63,30 @@ def main():
   #       {"vedio_dir": "11","begin_frame":"66","fire_begin_frame":"66",
   #       "fire_biggest_frame":"95","fire_over_frame":"183","over_frame":"183"}
 
-def genStepedSeq(srcFramesDir, dstFramesDir, startFrame, endFrame, seqLen, vecSize, step=1):
+# fv: feature vecotr
+# shape=(帧数, fc_out)
+def genStepedSeq(mVideoFV, dstSeqDir, startFrame, endFrame, seqLen, step=1):
   # flist = os.listdir(srcFramesDir)
   # flist = [f for f in flist if path.splitext[f][1]=='.npy']
 
-  ndaList = []
-  for i in range(startFrame, endFrame):
-    fname = '%06d.npy' % i
-    f = pj(srcFramesDir, fname)
-    nda = np.load(f)
-    ndaList.append(nda)
+  seqList = []
+  border = endFrame + 1
+  for i in range(startFrame, border, step):
+    end = i+seqLen
+    if end > border: # 分片越界
+      break
+    aSeq = mVideoFV[np.newaxis, i:end, :]
+    seqList.append(aSeq)
+    # fname = '%06d-%06d.npy' % (i, end-1)
+    # f = pj(dstSeqDir, fname)
+    # np.save(f, mVideoFV[i:end, :])
+  buckSlice = np.concatenate(seqList) # (-1, seqLen, vecSize)
 
-  print(len(ndaList))
-
+  fname = 'frameInterval-%d'
+  
+  return
   seq = np.zeros((seqLen, vecSize), np.float32)
   print(seq.shape)
-
-  cnt = 0
-  for i in range(startFrame, endFrame, step=step):
-    if i + vecSize > endFrame:
-      break
-    seq[cnt, :] = ndaList[i]
-    cnt += 1
-    if cnt == seqLen:
-      # print('%06d-%06d.npy' %(i-seqLen+1, i))
-      f = pj(dstFramesDir, '%06d-%06d.npy' %(i-seqLen+1, i))
-      np.save(f, seq)
-      cnt = 0
-  return
 
 def tst():
   i = 300
@@ -99,6 +95,22 @@ def tst():
   s = '%06d-%06d.npy' %(i-seqLen+1, i)
   print(s)
   seq = np.zeros((seqLen, vecSize), np.float32)
+  aa = seq[0:1, :]
+  aa[0, 0] = 3.3
+  print(seq[0, 0]) # 3.3
+
+  aa = np.reshape(seq, (-1, seqLen, vecSize))
+  # print(seq.shape) # (16, 128)
+  # print(aa.shape) # (1, 16, 128)
+  bb = seq[np.newaxis, 4:8, :]
+  print(seq.shape) # (16, 128)
+  # bb = np.expand_dims()
+  print(bb.shape) # (1, 4, 128)
+  l = [aa]*4
+  b = np.concatenate(l)
+  print(b.shape) # (4, 16, 128)
+  return
+
   print(seq.shape)
   vedio_dir = '11'
   vedio_dir = '%03d' % int(vedio_dir)
@@ -110,6 +122,7 @@ def tst():
     f = pj(npyDir, vId)
     nda = np.load(f)
     print('%s shape[0]: %d' % (f, nda.shape[0]))
+  
 
   # for i in range(0, 20):
   #   fname = '%06d' % i
