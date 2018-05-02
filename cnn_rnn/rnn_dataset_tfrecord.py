@@ -6,6 +6,10 @@ import os.path as path
 from os.path import join as pjoin
 import tensorflow as tf
 
+batch_size = 30
+seqLen=32
+vecSize=128
+
 class MyDataset():
   def __init__(self, train_tfrecord, eval_tfrecord):
     if not path.exists(train_tfrecord):
@@ -19,18 +23,16 @@ class MyDataset():
     self.eval_tfrecord = eval_tfrecord
     self.output_types = None
 
-    self.dict_name_id = {}
-    labels = os.listdir(train_tfrecord)
-    for idx, name in enumerate(labels):
-      print(name + ": " + idx)
-      self.dict_name_id[name] = idx
-  
-  def train_iter(self, batch_sz = 30, prefetch_batch=None):
-    print('train ----------')
+  def train_iter(self, batch_sz = 40, prefetch_batch=None):
+    global batch_size
+    batch_size = batch_sz
+    # print('train ----------')
     return self.get_iter(self.train_tfrecord, batch_sz, prefetch_batch)
   
-  def eval_iter(self, batch_sz = 50, prefetch_batch=None):
-    print('eval ===========')
+  def eval_iter(self, batch_sz = 40, prefetch_batch=None):
+    # print('eval ===========')
+    global batch_size
+    batch_size = batch_sz
     return self.get_iter(self.eval_tfrecord, batch_sz, prefetch_batch)
     # return self.get_iter(self.eval_tfrecord, batch_sz, prefetch_batch,
         # repeat=False)
@@ -60,8 +62,11 @@ class MyDataset():
   # end get_iter()
 
 def _parse_function(example_proto):
-  features = {"seq": tf.FixedLenFeature((), tf.float32, default_value=0.0),
-              "seq_shape": tf.FixedLenFeature((), tf.int64, default_value=0),
-              "label": tf.FixedLenFeature((), tf.int64, default_value=0)}
+  features = {"seq": tf.FixedLenFeature((seqLen, vecSize), tf.float32),
+              "seq_shape": tf.FixedLenFeature((2,), tf.int64),
+              "label": tf.FixedLenFeature((), tf.int64)}
+  # features = {"seq": tf.FixedLenFeature((batch_size, seqLen, vecSize), tf.float32, default_value=0.0),
+  #             "seq_shape": tf.FixedLenFeature((3,), tf.int64, default_value=0),
+  #             "label": tf.FixedLenFeature((batch_size, 2), tf.int64, default_value=0)}
   parsed_features = tf.parse_single_example(example_proto, features)
   return parsed_features["seq"], parsed_features["seq_shape"], parsed_features["label"]

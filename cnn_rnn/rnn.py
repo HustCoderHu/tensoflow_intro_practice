@@ -7,11 +7,12 @@ import tensorflow.contrib as tc
 
 class RNN:
   def __init__(self, rnntype, n_hidden, n_classes):
+    self.training = tf.placeholder(tf.bool, [])
     self.rnntype = rnntype
     self.n_hidden = n_hidden
     self.n_classes = n_classes
 
-  def __call__(self, inputs):
+  def __call__(self, inputs, batch_sz):
     pr_shape = lambda var : print(var.shape)
 
     if self.rnntype == "GRU" :
@@ -21,12 +22,13 @@ class RNN:
       print("rnntype: " + self.rnntype)
       cell = nn.rnn_cell.LSTMCell(self.n_hidden)
     
-    initial_state = cell.zero_state(inputs.shape[0], tf.float32)
+    initial_state = cell.zero_state(batch_sz, tf.float32)
+    # initial_state = cell.zero_state(inputs.shape[0], tf.float32)
 
     # dynamic_rnn inputs shape = [batch_size, max_time, ...]
     # outs shape = [batch_size, max_time, cell.output_size]
     # states shape = [batch_size, cell.state_size]
-    n_step = int(inputs.shape[1]) # n_step
+    # n_step = int(inputs.shape[1]) # n_step
 
     outs, states = nn.dynamic_rnn(cell, inputs, initial_state=initial_state, 
         dtype=tf.float32)
