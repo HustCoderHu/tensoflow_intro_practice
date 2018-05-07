@@ -21,10 +21,9 @@ class CNN:
     #     padding=self.layer_data_format, use_bias=False, kernel_initializer=self.w_initer)
 
     axis = 1 if self.data_format=="NCHW" else -1
-    self.bn = tl.BatchNormalization(axis=axis, scale=False, fused=True)
+    self.BN = lambda : tl.BatchNormalization(axis=axis, scale=False, fused=True)
     self.feature2rnn = 0
-    # out = self.bn(in, training=True) False for eval
-
+    # out = self.BN(in, training=True) False for eval
     return
   
   def Conv2D(self, filters, kernel_size, strides=1, padding='valid', use_bias=False):
@@ -58,23 +57,25 @@ class CNN:
     if castFromUint8:
       inputs = tf.cast(inputs, self.dtype)
     out = self.Conv2D(32, 5)(inputs)
+    # out = self.BN()(out, training=self.training)
     out = tf.nn.relu(out)
     out = self.Pool2D(2, 2, 'max')(out)
 
     out = self.Conv2D(64, 5)(out)
+    # out = self.BN()(out, training=self.training)
     out = tf.nn.relu(out)
     out = self.Pool2D(2, 2, 'max')(out)
     # print(self.layer_data_format)
 
     out = self.Conv2D(64, 5)(out)
+    # out = self.BN()(out, training=self.training)
     out = tf.nn.relu(out)
     out = self.Pool2D(4, 4, 'max')(out)
 
-    # out = self.bn(out, training=self.training)
+    # out = self.bn()(out, training=self.training)
 
     out = tl.Flatten()(out)
     out = self.FC(128)(out)
-    
     self.feature2rnn = out
 
     out = tl.Dropout(0.5)(out, training=self.training)
