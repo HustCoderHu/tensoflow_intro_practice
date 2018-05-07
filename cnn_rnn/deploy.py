@@ -42,19 +42,20 @@ rnn_ckpt = r'D:\Lab408\cnn_rnn\monsess_log-0502-hidden10\ckpts\model.ckpt-11200'
 t_clip = None
 t_feature2rnn = None
 
-t_pred_vec = None
+# t_pred_vec = None
+t_cnn_out_avg = None
 t_pred_avg = None
 t_rnn_pred = None
 cnn_model = None
 rnn_model = None
-
 
 # clip shape (seqLen, h, w, 3)
 def main(videoPath):
   global t_clip
   global t_feature2rnn
 
-  global t_pred_vec
+  # global t_pred_vec
+  global t_cnn_out_avg
   global t_pred_avg
   global t_rnn_pred
   global cnn_model
@@ -69,11 +70,12 @@ def main(videoPath):
       cnn_out = cnn_model(t_clip) # (batch, 2)
       print(cnn_out.shape)
       # pred_vec = tf.argmax(cnn_out, axis=1, output_type=tf.int32) # (batch,)
-      cnn_out_avg = tf.reduce_sum(cnn_out, axis=0) # (classes, ) batch维度上累加
+      # t_cnn_out_avg = tf.reduce_sum(cnn_out, axis=0) # (classes, ) batch维度上累加
+      t_cnn_out_avg = tf.reduce_mean(cnn_out, axis=0) # (classes, ) batch维度上均值
       # print(cnn_out_avg.shape)
-      t_pred_avg = tf.nn.softmax(cnn_out_avg)
-      # print(t_pred_avg.shape)
-      # print(t_pred_avg.dtype)
+      t_pred_avg = tf.nn.softmax(t_cnn_out_avg)
+      # print(t_pred_avg.shape) #(2,)
+      # print(t_pred_avg.dtype) <class 'float'>
       # return
       # t_pred_vec = tf.argmax(cnn_out, axis=1, output_type=tf.float32) # (batch,)
       # t_pred_avg = tf.reduce_mean(t_pred_vec)
@@ -104,16 +106,20 @@ def main(videoPath):
   # saver.restore(rnn_sess, rnn_ckpt)
   
   # work on video
-  videoPath = r'D:\Lab408\cnn_rnn\src_dir\5.mp4'
+  videoPath = r'D:\Lab408\cnn_rnn\src_dir\1.mp4'
+  # videoPath = r'D:\Lab408\cnn_rnn\src_dir\2.mp4'
+  # videoPath = r'D:\Lab408\cnn_rnn\src_dir\3.mp4'
+  # videoPath = r'D:\Lab408\cnn_rnn\src_dir\4.mp4'
+  # videoPath = r'D:\Lab408\cnn_rnn\src_dir\5.mp4'
   # videoPath = r'D:\Lab408\cnn_rnn\src_dir\fire-smoke-small(13).avi'
   # videoPath = r'D:\Lab408\cnn_rnn\src_dir\NIST Re-creation of The Station Night Club fire   without sprinklers (1).mp4'
-  handelVideo(cnn_sess, rnn_sess, videoPath)
+  handelVideo(cnn_sess, rnn_sess, videoPath, videoPath+'.log')
   
   cnn_sess.close()
   rnn_sess.close()
   return
 
-def handelVideo(cnn_sess, rnn_sess, videoPath):
+def handelVideo(cnn_sess, rnn_sess, videoPath, logFile=None):
   cap = cv.VideoCapture(videoPath)
   frame_count = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
   fps = cap.get(cv.CAP_PROP_FPS) # float
@@ -124,6 +130,8 @@ def handelVideo(cnn_sess, rnn_sess, videoPath):
   print('frame_count: {}'.format(frame_count))
   print('fps: {}'.format(fps))
 
+  logList = []
+
   freq = LOW_FREQ
   frameIdx = -1 # 最后读取帧的位置
   while(cap.isOpened):
@@ -132,8 +140,11 @@ def handelVideo(cnn_sess, rnn_sess, videoPath):
     if frameOffset == 0:
       break
     frameIdx += frameOffset
-    feature2rnn, pred_avg = cnn_sess.run(
-        [cnn_model.feature2rnn, t_pred_avg],
+    # feature2rnn, pred_avg = cnn_sess.run(
+    #     [cnn_model.feature2rnn, t_pred_avg],
+    #     feed_dict={t_clip: batchFrame, cnn_model.training: False})
+    feature2rnn, pred_avg, cnn_out_avg = cnn_sess.run(
+        [cnn_model.feature2rnn, t_pred_avg, t_cnn_out_avg],
         feed_dict={t_clip: batchFrame, cnn_model.training: False})
     # 触发高频采样
     fire_confidence = pred_avg[cnn_label['fire']]
@@ -149,9 +160,17 @@ def handelVideo(cnn_sess, rnn_sess, videoPath):
       rnn_pred = rnn_pred[0]
     else:
       rnn_pred = None
-    # 
-    showAnalysis(frameIdx, fps, fire_confidence, rnn_pred)
+    anastr = Analysis2str(frameIdx, fps, fire_confidence, rnn_pred)
+    print(anastr)
+    print('cnn_out_avg:')
+    print(cnn_out_avg)
+    # logFile=None
+    logList.append(anastr+'\n')
 
+  # 输出到文件
+  if not (logFile is None):
+    with open(logFile, 'w') as fp:
+      fp.writelines(logList)
   cap.release()
 
 
@@ -184,21 +203,17 @@ def stackFrames(cap, prePolicy, freq):
   else:
     return np.concatenate(l), frameOffset
 
-def showAnalysis(frameIdx, fps, fire_confidence, rnn_pred):
+def Analysis2str(frameIdx, fps, fire_confidence, rnn_pred):
   # http://blog.xiayf.cn/2013/01/26/python-string-format/
-  if rnn_pred is None:
-    # < 左对齐
-    # 20 min 50 fps 最大帧数 30000
-    # 对齐宽度 5
-    content = '{:5.1f}s fire {:.3f}'.format(
-        frameIdx/fps, fire_confidence)
-  else:
-    content = '{:5.1f}s fire {:.3f}\n  趋势 变大:{:.3f} 变小:{:.3f}'.format(
-        frameIdx/fps, fire_confidence, rnn_pred[0], rnn_pred[1])
+  # < 左对齐
+  # 20 min 50 fps 最大帧数 30000
+  # 对齐宽度 5
+  content = '{:5.1f}s fire {:.2%}'.format(frameIdx/fps, fire_confidence)
+  if not (rnn_pred is None):
+    content += '\n   趋势 变大:{:.2%} -- 变小:{:.2%}'.format(rnn_pred[0], rnn_pred[1])
     if rnn_pred[0]>rnn_pred[1]:
-     content += ' 大'
-  print(content)
-  return
+     content += '  大'
+  return content
 
 def tst():
   # nda0 = np.zeros([250, 250, 3], np.uint8)
