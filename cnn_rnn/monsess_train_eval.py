@@ -3,7 +3,7 @@ import os
 import os.path as path
 import tensorflow as tf
 
-import dataset
+import cnn_dataset
 import simple_model as smodel
 import runhooks
 
@@ -28,11 +28,12 @@ def main():
 
 
   # ------------------------------ prepare input ------------------------------
-  dset = dataset.MyDataset(train_dir, eval_dir, resize=(250, 250))
-  prefetch_batch = None
+  dset = cnn_dataset.MyDataset(videoRoot, labeljson, evalSet, resize=(250, 250))
+  dset.setTrainParams(50, prefetch=16)
+  dset.setEvalParams(200, prefetch=5)
   iter_dict = {
-    'train': dset.train(train_batchsz, prefetch_batch),
-    'eval': dset.eval(eval_batchsz, prefetch_batch)
+    'train': dset.makeTrainIter(),
+    'eval': dset.makeEvalIter()
   }
   # train_iter = dset.train(train_batchsz, prefetch_batch)
   # eval_iter = dset.eval(eval_batchsz, prefetch_batch)
@@ -123,7 +124,7 @@ def main():
     summary_protobuf= summary_protobuf,
   )
 
-  # >>>  checkpoit saver
+  # >>>  checkpoint saver
   ckpt_saver_hook = runhooks.CkptSaverHook(
     ckpt_dir,
     save_steps= save_ckpts_steps
@@ -156,6 +157,14 @@ def main():
   # print('end')
   # return
 
+  l = tf.list_tensor
+  
+  _dict = {'w1': _tensor}
+  tensorList = [_dict]
+  for i in l:
+    _tensor = tf.get_by_name(i)
+    tensorList.append({i: _tensor})
+  
   # ------------------------------  start  ------------------------------
   with tf.train.MonitoredSession(
     session_creator= sess_creator,

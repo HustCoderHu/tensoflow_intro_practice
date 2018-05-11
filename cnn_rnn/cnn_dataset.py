@@ -8,6 +8,7 @@ from pprint import pprint
 import tensorflow as tf
 
 class MyDataset():
+  label_id = {'fire': 0, 'fireless': 1}
   # evalSet: 各种类别里作为测试的文件集合
   # 比如 [4, 5, 6]
   def __init__(self, videoRoot, labeljson, evalSet, resize=None):
@@ -20,7 +21,6 @@ class MyDataset():
     self.evalSet = evalSet
     self.resize=resize
 
-    self.label_id = {'fire': 0, 'fireless': 1}
     self.labeldict = MyDataset.decodeLabel(labeljson)
     # pprint(self.labeldict)
     self.categoryInfo = MyDataset.info(self.labeldict)
@@ -42,7 +42,7 @@ class MyDataset():
       dat = json.load(f)
     dat = dat['fire_clips'] # []
 
-    decoded = {}
+    labeldict = {}
     for it in dat:
       video_idx = int(it['video_dir'])
       begin_frame = int(it['begin_frame'])
@@ -52,18 +52,18 @@ class MyDataset():
       over_frame = int(it['over_frame'])
 
       spans = None
-      if video_idx in decoded.keys():
-        spans = decoded[video_idx]
+      if video_idx in labeldict.keys():
+        spans = labeldict[video_idx]
       else:
         spans = {'fire': [], 'fireless': []}
-        decoded[video_idx] = spans
+        labeldict[video_idx] = spans
       if begin_frame <= fire_begin_frame-1:
         spans['fireless'].append(tuple([begin_frame, fire_begin_frame-1]))
       if fire_over_frame+1 <= over_frame:
         spans['fireless'].append(tuple([fire_over_frame+1, over_frame]))
       if fire_begin_frame < fire_over_frame:
         spans['fire'].append(tuple([fire_begin_frame, fire_over_frame]))
-    return decoded
+    return labeldict
 
   def setTrainParams(self, batchsz, prefetch=None, repeat=True):
     self.trainBatchsz = batchsz
@@ -81,24 +81,34 @@ class MyDataset():
       dat = json.load(f)
     dat = dat['fire_clips']
 
-    includeVideoLabel = []
-    for it in dat:
+    part_labeldict = {}
+    for video_idx, spans in self.labeldict.items():
       # 排除测试用的视频帧
-      if int(it['video_dir']) in self.evalSet:
+      if video_idx in self.evalSet:
         continue
-      includeVideoLabel.append(it)
-
+      part_labeldict[video_idx] = spans
     print('-- train')
-    img_list, label_list = self.genFrames_PathLabels(includeVideoLabel)
+    # keys = list(part_labeldict.keys())
+    # keys.sort()
+    # print(keys)
+    # print(len(part_labeldict))
+    # left = []
+    # for k in range(1, 79):
+    #   if k in keys:
+    #     continue
+    #   left.append(k)
+    # print(left)
+    # pprint(includeVideoLabel)
+    img_list, label_list = self.genFrames_PathLabels(part_labeldict)
     print('images num: {}'.format(len(img_list)))
 
     t_imglist = tf.constant(img_list, dtype=tf.string)
     t_lbllist = tf.constant(label_list, dtype=tf.int32)
     dataset = tf.data.Dataset().from_tensor_slices((t_imglist, t_lbllist))
     if self.resize == None:
-      dset = dataset.map(MyDataset._mapfn, num_parallel_calls=os.cpu_count())
+      dset = dataset.map(self._mapfn, num_parallel_calls=os.cpu_count())
     else :
-      dset = dataset.map(MyDataset._mapfn_resize, num_parallel_calls=os.cpu_count())
+      dset = dataset.map(self._mapfn_resize, num_parallel_calls=os.cpu_count())
     # dset = dset.shuffle(len(img_list), reshuffle_each_iteration=False)
     
     if self.trainPrefetch == None:
@@ -123,16 +133,17 @@ class MyDataset():
       dat = json.load(f)
     dat = dat['fire_clips']
 
-
-    includeVideoLabel = []
-    for it in dat:
+    part_labeldict = {}
+    for video_idx, spans in self.labeldict.items():
       # 测试用的视频帧
-      if int(it['video_dir']) in self.evalSet:
-        includeVideoLabel.append(it)
+      if video_idx in self.evalSet:
+        part_labeldict[video_idx] = spans
     print('-- eval')
-    img_list, label_list = self.genFrames_PathLabels(includeVideoLabel)
-
+    # print(len(part_labeldict))
+    # pprint(includeVideoLabel)
+    img_list, label_list = self.genFrames_PathLabels(part_labeldict)
     print('images num: {}'.format(len(img_list)))
+
     t_imglist = tf.constant(img_list, dtype=tf.string)
     t_lbllist = tf.constant(label_list, dtype=tf.int32)
     dataset = tf.data.Dataset().from_tensor_slices((t_imglist, t_lbllist))
@@ -153,13 +164,12 @@ class MyDataset():
     # shape (batch_sz, )
     self.output_types = dset.output_types
     return dset.make_one_shot_iterator()
-
-  def genFrames_PathLabels(self, includeVideoLabel):
+  
+  # 逐个处理每个视频
+  def genFrames_PathLabels(self, part_labeldict):
     allPath = []
-    for video_idx in self.decoded.keys():
-      # 逐个处理每个视频
-      spans = self.decoded[video_idx]
-      spans['video_idx'] = video_idx
+    for video_idx, spans in part_labeldict.items():
+      spans = part_labeldict[video_idx]
       spans['frames_dir'] = pj(self.videoRoot, '{:0>3d}'.format(video_idx))
       exampleList = MyDataset.handelFrames(spans)
       allPath.extend(exampleList)
@@ -174,6 +184,7 @@ class MyDataset():
       labelList.append(it['label'])
     return pathList, labelList
   
+  # 每个视频所有帧构成 list
   # spans: {'frames_dir': xx, fire': A, 'fireless': B}
   # A, B: [[0, x], [y, z], [z, .], ...]
   # return [] # item {'imgPath': xxx, 'label': xxx}
@@ -183,17 +194,16 @@ class MyDataset():
     if not path.exists(frames_dir):
       return []
     
-    video_idx = spans['video_idx']
     flist = os.listdir(frames_dir)
     flist = [f for f in flist if path.splitext(f)[1] == '.jpg']
-    print('len(flist) jpg: %d' % len(flist))
+    # print('len(flist) jpg: %d' % len(flist))
     exampleList = []
     for f in flist:
       # 每帧对应标签
       frameIdx = int(path.splitext(f)[0])
-      labelid = self.label_id['fireless']
+      labelid = MyDataset.label_id['fireless']
       if MyDataset.judgeLabel(spans, frameIdx):
-        labelid = self.label_id['fire']
+        labelid = MyDataset.label_id['fire']
       example = {'imgPath': pj(frames_dir, f), 'label': labelid}
       exampleList.append(example)
 
@@ -211,8 +221,7 @@ class MyDataset():
     # spansFireless = spans['fireless']
 
 
-  @staticmethod
-  def _mapfn(filename, label):
+  def _mapfn(self, filename, label):
     with tf.device('/cpu:0'):
       # <https://www.tensorflow.org/performance/performance_guide>
       img_raw = tf.read_file(filename)
@@ -220,8 +229,7 @@ class MyDataset():
       # decoded = tf.cast(decoded, tf.float32)
     return decoded, label, filename
   
-  @staticmethod
-  def _mapfn_resize(filename, label):
+  def _mapfn_resize(self, filename, label):
     with tf.device('/cpu:0'):
       # <https://www.tensorflow.org/performance/performance_guide>
       img_raw = tf.read_file(filename)
@@ -252,7 +260,7 @@ class MyDataset():
       # 累计
       totalFire += nFire
       totalFireless += nFireless
-      categoryInfo[video_idx] = {'fire': nFire, 'totalFireless': nFireless}
+      categoryInfo[video_idx] = {'fire': nFire, 'fireless': nFireless}
       # print('video {}:'.format(video_idx))
       # pprint({'fire': nFire, 'totalFireless': nFireless})
     
@@ -269,14 +277,17 @@ class MyDataset():
 def tst():
   videoRoot = r'D:\Lab408\cnn_rnn\src_dir'
   labeljson = r'D:\Lab408\cnn_rnn\label.json'
-  evalSet = [4, 5, 6]
+  videoRoot = r'/home/hzx/all_data/'
+  labeljson = r'/home/hzx/all_data/label.json'
+
+  evalSet = [47, 48, 49, 50, 27, 33, 21, 32]
 
   dataset = MyDataset(videoRoot, labeljson, evalSet, resize=(250, 250))
-  # dataset.setTrainParams(50)
-  # dataset.setEvalParams(200)
-  # trainIter = dataset.makeTrainIter()
-  # evalIter = dataset.makeEvalIter()
-  return 
+  dataset.setTrainParams(50, prefetch=16)
+  dataset.setEvalParams(200, prefetch=5)
+  trainIter = dataset.makeTrainIter()
+  evalIter = dataset.makeEvalIter()
+  return
 
   resized, filename = dataset(4, prefetch_batch=None)
   sess_conf = tf.ConfigProto()
