@@ -6,7 +6,6 @@ from tensorflow import nn as nn
 import tensorflow.contrib as tc
 
 
-
 class CNN:
   def __init__(self, data_format='NHWC', dtype=tf.float32):
     self.training = tf.placeholder(tf.bool, [])
@@ -24,9 +23,11 @@ class CNN:
     self.BN = lambda : tl.BatchNormalization(axis=axis, scale=False, fused=True)
     self.feature2rnn = 0
     # out = self.BN(in, training=True) False for eval
+    self.channelAxis = 1 if self.data_format=="NCHW" else -1
+    self.i = 0
     return
   
-  def Conv2D(self, filters, kernel_size, strides=1, padding='valid', use_bias=False):
+  def Conv2D(self, filters, kernel_size, strides=1, padding='same', use_bias=False):
     return tl.Conv2D(filters, kernel_size, strides,
         padding=padding, data_format=self.layer_data_format, use_bias=use_bias, 
         kernel_initializer=self.w_initer)
@@ -44,7 +45,7 @@ class CNN:
     else :
       out = tf.reduce_mean(x, (2, 3))
     return out
-  
+
   def __call__(self, inputs, castFromUint8=True):
     # self.training
     pr_shape = lambda var : print(var.shape)
@@ -56,41 +57,176 @@ class CNN:
     # print(inputs.shape.dims)
     if castFromUint8:
       inputs = tf.cast(inputs, self.dtype)
-    out = self.Conv2D(32, 5)(inputs)
-    # out = self.BN()(out, training=self.training)
-    out = tf.nn.relu(out)
-    out = self.Pool2D(2, 2, 'max')(out)
+    
+    with tf.variable_scope("init_conv") :
+      out = self.Conv2D(16, 5, strides=2)(inputs)
+      # pr_shape(out)
+      out = self.BN()(out, training=self.training)
+      out = tf.nn.relu6(out)
+    with tf.variable_scope("body") :
+      out = self._inverted_bottleneck(out, 5, 24, subsample=True)
+      # pr_shape(out)
+      out = tf.nn.relu6(out)
+      out = self._inverted_bottleneck(out, 4, 32, subsample=True)
+      # pr_shape(out)
+      out = tf.nn.relu6(out)
+      out = self._inverted_bottleneck(out, 5, 48, subsample=True)
+      out = tf.nn.relu6(out)
+      out = self._inverted_bottleneck(out, 4, 56, subsample=True)
+      out = tf.nn.relu6(out)
+    # out = self.Pool2D(4, 3, 'avg')(out)
+    # pr_shape(out)
 
-    out = self.Conv2D(64, 5)(out)
-    # out = self.BN()(out, training=self.training)
-    out = tf.nn.relu(out)
-    out = self.Pool2D(2, 2, 'max')(out)
-    # print(self.layer_data_format)
+    # residualParam = []
+    # param = {'filters': 32, 'kernel_sz': 5, 'strides': 2}
+    # residualParam.append(param)
+    # param = {'filters': 48, 'kernel_sz': 3, 'strides': 1}
+    # residualParam.append(param)
+    # with tf.variable_scope("res1"):
+    #   out = self.residual(inputs, residualParam)
+    # out = tf.nn.relu6(out)
 
-    out = self.Conv2D(64, 5)(out)
-    # out = self.BN()(out, training=self.training)
-    out = tf.nn.relu(out)
-    out = self.Pool2D(4, 4, 'max')(out)
+    # with tf.variable_scope("conv1_relu"):
+    #   out0 = self.Conv2D(48, 5)(inputs)
+    #   out0 = self.BN()(out0, training=self.training)
+    #   out0 = tf.nn.relu6(out0)
 
-    # out = self.bn()(out, training=self.training)
+    # with tf.variable_scope("conv1_relu"):
+    # with tf.variable_scope("pool1"):
+    #   out = self.Pool2D(3, 2, 'max')(out)
 
-    out = tl.Flatten()(out)
-    out = self.FC(128)(out)
+    # with tf.variable_scope("conv2_relu"):
+    #   out = self.Conv2D(48, 5)(out)
+    #   out = self.BN()(out, training=self.training)
+    #   out = tf.nn.relu6(out)
+    # with tf.variable_scope("pool2"):
+    #   out = self.Pool2D(3, 3, 'max')(out)
+
+    # with tf.variable_scope("conv3_relu"):
+    #   out = self.Conv2D(48, 5)(out)
+    #   out = self.BN()(out, training=self.training)
+    #   out = tf.nn.relu6(out)
+    # with tf.variable_scope("pool3"):
+    #   out = self.Pool2D(3, 3, 'max')(out)
+
+    with tf.variable_scope('fc1'):
+      out = tl.Flatten()(out)
+      out = self.FC(128)(out)
+
     self.feature2rnn = out
-
-    out = tl.Dropout(0.5)(out, training=self.training)
-    out = self.FC(2)(out)
+    
+    with tf.variable_scope("dropout"):
+      out = tl.Dropout(0.5)(out, training=self.training)
+    with tf.variable_scope('fc2'):
+      out = self.FC(2)(out)
     # pr_shape(out)
     
     return out
+  
+  # layerParam = [] item 
+  # {'filters': int, 'kernel_sz': int, 'strides': int}
+  def residual(self, inputs, layerParam):
+    shortcut = inputs
+    # 第一个
+    param = layerParam[0]
+    out0 = self.Conv2D(param['filters'], param['kernel_sz'], param['strides'])(inputs)
+    out0 = self.BN()(out0, training=self.training)
+    out0 = tf.nn.relu6(out0)
+
+    # 2 ~ n-1
+    for idx in range(1, len(layerParam)-1):
+      param = layerParam[idx]
+      out0 = self.Conv2D(param['filters'], param['kernel_sz'], param['strides'])(out0)
+      out0 = self.BN()(out0, training=self.training)
+      out0 = tf.nn.relu6(out0)
+
+    # 第n个
+    param = layerParam[-1]
+    out0 = self.Conv2D(param['filters'], param['kernel_sz'], param['strides'])(out0)
+    out0 = self.BN()(out0, training=self.training)
+    
+    conv1x1_stride = 1
+    for param in layerParam:
+      conv1x1_stride *= param['strides']
+
+    if shortcut.shape[self.channelAxis] != out0.shape[self.channelAxis] \
+      or conv1x1_stride != 1:
+      param = layerParam[-1]
+      print('conv1x1 to adjust channel')
+      shortcut = self.Conv2D(param['filters'], 1, conv1x1_stride)(out0)
+
+    # tf.variable_scope("conv1_relu"):
+    return out0 + shortcut
+  
+  def _inverted_bottleneck(self, x, rate_channels, channels, subsample):
+    init = tf.contrib.layers.xavier_initializer(dtype=tf.float32)
+    stride = 2 if subsample else 1
+
+    in_shape = x.shape
+    if self.data_format == "NCHW":
+      x_channels = in_shape[1]
+      strides_4d = [1, 1, stride, stride]
+    else :
+      x_channels = in_shape[-1]
+      strides_4d = [1, stride, stride, 1]
+
+    n_in = int(x_channels)
+    # print(type(n_in))
+    # print(n_in)
+    # 3x3 dw
+    channel_multiplier = 1
+
+    with tf.variable_scope("inverted_bottleneck_{}_{}_{}".format(
+      self.i, rate_channels, subsample ) ) :
+      if x_channels == channels:
+        if stride == 2:
+          w3x3 = tf.get_variable("w3x3_br0", [3, 3, x_channels, channel_multiplier],
+                                 initializer=init)
+          branch_0 = tf.nn.depthwise_conv2d(x, w3x3, strides=strides_4d,
+                                            padding="SAME",
+                                            data_format=self.data_format)
+          branch_0 = self.BN()(branch_0, training=self.training)
+        else :
+          branch_0 = x
+      else :
+        branch_0 = self.Conv2D(channels, 1, stride)(x)
+        branch_0 = self.BN()(branch_0, training=self.training)
+
+      # --- 1x1 pointwise
+      n_out = rate_channels * n_in
+      branch_1 = self.Conv2D(n_out, 1)(x)
+      branch_1 = self.BN()(branch_1, training=self.training)
+      branch_1 = tf.nn.relu6(branch_1)
+
+      # --- 3x3 depthwise
+      n_in = n_out
+      # print(n_in)
+      # print(n_out)
+      w3x3 = tf.get_variable("w3x3_br1", [3, 3, n_in, channel_multiplier],
+                             initializer=init)
+      # b3x3 = b1x1 = tf.get_variable("b3x3", [n_out], initializer=init)
+      branch_1 = tf.nn.depthwise_conv2d(branch_1, w3x3, strides=strides_4d,
+                                      padding="SAME", data_format=self.data_format)
+      branch_1 = self.BN()(branch_1, training=self.training)
+      branch_1 = tf.nn.relu6(branch_1)
+
+      # --- 1x1
+      branch_1 = self.Conv2D(channels, 1)(branch_1)
+      branch_1 = self.BN()(branch_1, training=self.training)
+      # print(self.i)
+      out = branch_0 + branch_1
+      # out = tf.add(branch_0, branch_1)
+    self.i += 1
+    return out
+
 
 if __name__ == '__main__':
   model = CNN(data_format='NCHW')
-  x = tf.constant(0, dtype=tf.uint8, shape=[32, 250, 250, 3])
+  x = tf.constant(0, dtype=tf.uint8, shape=[1, 250, 250, 3])
 
   pr_shape = lambda var : print(var.shape)
   logits = model(x)
-  # print(logits.shape)
+  print(logits.shape)
 
 # CNN Long Short-Term Memory Networks
 # https://machinelearningmastery.com/cnn-long-short-term-memory-networks/
