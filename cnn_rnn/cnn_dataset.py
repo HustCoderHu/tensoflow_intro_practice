@@ -20,12 +20,15 @@ class MyDataset():
     self.labeljson = labeljson
     self.evalSet = evalSet
     self.resize=resize
+    _h, _w = resize
+    self.aspect_ratio_range = [0.85, 1.15]
+    # self.aspect_ratio_range = float(_w)/float(_h)
 
     self.labeldict = MyDataset.decodeLabel(labeljson)
     # pprint(self.labeldict)
     self.categoryInfo = MyDataset.info(self.labeldict)
     pprint(self.categoryInfo)
-    
+    self.bboxes = tf.constant([[[0., 0., 1., 1.]]])  
 
     # labels = os.listdir(videoRoot)
     # labels.sort()
@@ -234,9 +237,18 @@ class MyDataset():
       # <https://www.tensorflow.org/performance/performance_guide>
       img_raw = tf.read_file(filename)
       decoded = tf.image.decode_jpeg(img_raw)
+      # 随机的截取图片中一个块
+      begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
+          tf.shape(decoded), self.bboxes, min_object_covered=0.85,
+          aspect_ratio_range=self.aspect_ratio_range, max_attempts=10)
+      distorted_image = tf.slice(decoded, begin, size)
+      image_random_saturation = tf.image.random_saturation(distorted_image,
+          0.1, 0.9)
       _h, _w = self.resize
-      resized = tf.image.resize_images(decoded, [_h, _w])
-    return resized, label, filename
+      # resized = tf.image.resize_image_with_crop_or_pad(decoded, _h, _w)
+      resized = tf.image.resize_images(image_random_saturation, [_h, _w])
+      flipped = tf.image.random_flip_left_right(resized)
+    return flipped, label, filename
   
   # 统计每个视频有火和无火的帧数
   # and all
@@ -264,7 +276,7 @@ class MyDataset():
       # print('video {}:'.format(video_idx))
       # pprint({'fire': nFire, 'totalFireless': nFireless})
     
-    categoryInfo['total:'] = {'fire': totalFire, 'totalFireless': totalFireless}
+    categoryInfo['total:'] = {'totalfire': totalFire, 'totalFireless': totalFireless}
     # print('total:')
     # print('fire: {}'.format(totalFire))
     # print('fireless: {}'.format(totalFireless))
