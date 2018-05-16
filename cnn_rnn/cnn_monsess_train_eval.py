@@ -4,51 +4,48 @@ import os.path as path
 import tensorflow as tf
 
 import cnn_dataset
-import simple_model as smodel
+import cnn
 import runhooks
 
-
 def main():
-  train_dir = r'F:\Lab408\jinzhengu\root\shuffled_divided\train'
-  eval_dir = r'F:\Lab408\jinzhengu\root\shuffled_divided\eval'
-  log_dir = r'F:\Lab408\jinzhengu\root\monitored_sess_log'
+  log_dir = r'/home/hzx/fireDetect-hzx/log20180516/train_eval_log'
   ckpt_dir = path.join(log_dir, 'ckpts')
-  # model_dir = r'F:\Lab408\jinzhengu\root\monitored_sess_log'
+
+  videoRoot = r'/home/hzx/all_data/'
+  labeljson = r'/home/hzx/all_data/label.json'
+  evalSet = [47, 48, 49, 50, 27, 33, 21, 32]
+  if not path.exists(log_dir):
+    os.mkdir(log_dir)
+  if not path.exists(ckpt_dir):
+    os.mkdir(ckpt_dir)
   
   eval_interval = 20
-  
   save_summary_steps = 5
   save_ckpts_steps = 100
-  train_batchsz = 20
-  eval_batchsz = 50
+  train_batchsz = 50
+  eval_batchsz = 100
   # eval_steps = 40
   epoch = 900
   img_num = 870 * 2
   max_steps = (img_num * epoch) // train_batchsz
 
-
   # ------------------------------ prepare input ------------------------------
-  dset = cnn_dataset.MyDataset(videoRoot, labeljson, evalSet, resize=(250, 250))
-  dset.setTrainParams(50, prefetch=16)
-  dset.setEvalParams(200, prefetch=5)
+  _h = 250
+  _w = 250
+  dset = cnn_dataset.MyDataset(videoRoot, labeljson, evalSet, resize=(_h, _w))
+  dset.setTrainParams(train_batchsz, prefetch=10)
+  dset.setEvalParams(eval_batchsz, prefetch=2)
   iter_dict = {
     'train': dset.makeTrainIter(),
     'eval': dset.makeEvalIter()
   }
-  # train_iter = dset.train(train_batchsz, prefetch_batch)
-  # eval_iter = dset.eval(eval_batchsz, prefetch_batch)
-  # dict_tsr_handle = {
-    # 'train': train_iter.string_handle(),
-    # 'eval': eval_iter.string_handle()
-  # }
 
   holder_handle = tf.placeholder(tf.string, [])
   iter = tf.data.Iterator.from_string_handle(
-      holder_handle, iter_dict['train'].output_types)
+      holder_handle, dset.output_types)
   # next_elem = iter.get_next()
   inputx, labels, filename = iter.get_next()
-  inputx = tf.reshape(inputx, [-1, 200, 250, 3])
-  inputx = tf.transpose(inputx, [0, 3, 1, 2]) # nchw
+  inputx = tf.reshape(inputx, [-1, _h, _w, 3])
   # eval_x.set_shape([eval_batchsz, 200, 250, 3])
 
   # train_x, train_y, train_fname = dset.train(train_batchsz, prefetch_batch)
@@ -57,7 +54,7 @@ def main():
   # eval_x.set_shape([eval_batchsz, 200, 250, 3])
 
   # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ build graph \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
-  model = smodel.CNN('NCHW')
+  model = cnn.CNN('NCHW')
   # model = smodel.Simplest('NHWC')
   logits = model(inputx)
   with tf.name_scope('cross_entropy'):
@@ -146,7 +143,7 @@ def main():
   # ////////////////////////////// session config //////////////////////////////
   sess_conf = tf.ConfigProto()
   sess_conf.gpu_options.allow_growth = True
-  sess_conf.gpu_options.per_process_gpu_memory_fraction = 0.75
+  # sess_conf.gpu_options.per_process_gpu_memory_fraction = 0.9
   
   sess_creator = tf.train.ChiefSessionCreator(
       # scaffold=scaffold,
@@ -156,15 +153,7 @@ def main():
   )
   # print('end')
   # return
-
-  l = tf.list_tensor
-  
-  _dict = {'w1': _tensor}
-  tensorList = [_dict]
-  for i in l:
-    _tensor = tf.get_by_name(i)
-    tensorList.append({i: _tensor})
-  
+ 
   # ------------------------------  start  ------------------------------
   with tf.train.MonitoredSession(
     session_creator= sess_creator,
