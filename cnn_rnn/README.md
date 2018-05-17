@@ -11,6 +11,7 @@ CNN 提取特征形成序列输入到 RNN 中
 因为相似度高，实际样本的数量远小于总帧数，需要引入一些变化  
 暂时采取 `resize_image_with_crop_or_pad` + `随机水平翻转`
 
+`sample_distorted_bounding_box` 可能导致切块太小
 
 ## .1 TRAIN
 TODO
