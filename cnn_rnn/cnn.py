@@ -59,23 +59,23 @@ class CNN:
       inputs = tf.cast(inputs, self.dtype)
     
     with tf.variable_scope("init_conv") :
-      out = self.Conv2D(16, 5, strides=2)(inputs)
+      out = self.Conv2D(32, 3, strides=2)(inputs)
       # pr_shape(out)
       out = self.BN()(out, training=self.training)
       out = tf.nn.relu6(out)
     with tf.variable_scope("body") :
-      out = self._inverted_bottleneck(out, 5, 24, subsample=True)
+      out = self._inverted_bottleneck(out, 6, 16, stride=1)
       # pr_shape(out)
-      out = tf.nn.relu6(out)
-      out = self._inverted_bottleneck(out, 4, 32, subsample=True)
+      # out = tf.nn.relu6(out)
+      out = self._inverted_bottleneck(out, 6, 24, stride=2)
       # pr_shape(out)
-      out = tf.nn.relu6(out)
-      out = self._inverted_bottleneck(out, 5, 48, subsample=True)
-      out = tf.nn.relu6(out)
-      out = self._inverted_bottleneck(out, 4, 56, subsample=True)
-      out = tf.nn.relu6(out)
-    # out = self.Pool2D(4, 3, 'avg')(out)
-    # pr_shape(out)
+      # out = tf.nn.relu6(out)
+      out = self._inverted_bottleneck(out, 6, 32, stride=2)
+      # out = tf.nn.relu6(out)
+      out = self._inverted_bottleneck(out, 6, 64, stride=2)
+      # out = tf.nn.relu6(out)
+    out = self.Pool2D(4, 3, 'max')(out)
+    pr_shape(out)
 
     # residualParam = []
     # param = {'filters': 32, 'kernel_sz': 5, 'strides': 2}
@@ -158,11 +158,10 @@ class CNN:
     # tf.variable_scope("conv1_relu"):
     return out0 + shortcut
   
-  def _inverted_bottleneck(self, x, rate_channels, channels, subsample):
+  def _inverted_bottleneck_orig(self, x, rate_channels, channels, stride=1):
     init = tf.contrib.layers.xavier_initializer(dtype=tf.float32)
-    stride = 2 if subsample else 1
 
-    in_shape = x.shape
+    in_shape = x.get_shape().as_list()
     if self.data_format == "NCHW":
       x_channels = in_shape[1]
       strides_4d = [1, 1, stride, stride]
@@ -170,30 +169,69 @@ class CNN:
       x_channels = in_shape[-1]
       strides_4d = [1, stride, stride, 1]
 
-    n_in = int(x_channels)
-    # print(type(n_in))
-    # print(n_in)
-    # 3x3 dw
-    channel_multiplier = 1
+    # print('type(x_channels)')
+    # print(type(x_channels)) # int
 
-    with tf.variable_scope("inverted_bottleneck_{}_{}_{}".format(
-      self.i, rate_channels, subsample ) ) :
-      if x_channels == channels:
-        if stride == 2:
-          w3x3 = tf.get_variable("w3x3_br0", [3, 3, x_channels, channel_multiplier],
-                                 initializer=init)
-          branch_0 = tf.nn.depthwise_conv2d(x, w3x3, strides=strides_4d,
-                                            padding="SAME",
-                                            data_format=self.data_format)
-          branch_0 = self.BN()(branch_0, training=self.training)
-        else :
-          branch_0 = x
-      else :
-        branch_0 = self.Conv2D(channels, 1, stride)(x)
-        branch_0 = self.BN()(branch_0, training=self.training)
+    with tf.variable_scope("inverted_bottleneck_{}_t{}_s{}".format(
+        self.i, rate_channels, stride) ) :
 
       # --- 1x1 pointwise
       n_out = rate_channels * n_in
+      branch_1 = self.Conv2D(n_out, 1)(x)
+      branch_1 = self.BN()(branch_1, training=self.training)
+      branch_1 = tf.nn.relu6(branch_1)
+
+      # --- 3x3 depthwise
+      n_in = n_out
+      # print(n_in)
+      # print(n_out)
+      channel_multiplier = 1
+      w3x3 = tf.get_variable("w3x3_br1", [3, 3, n_in, channel_multiplier],
+                             initializer=init)
+      # b3x3 = b1x1 = tf.get_variable("b3x3", [n_out], initializer=init)
+      branch_1 = tf.nn.depthwise_conv2d(branch_1, w3x3, strides=strides_4d,
+                                      padding="SAME", data_format=self.data_format)
+      branch_1 = self.BN()(branch_1, training=self.training)
+      branch_1 = tf.nn.relu6(branch_1)
+
+      # --- 1x1
+      branch_1 = self.Conv2D(channels, 1)(branch_1)
+      branch_1 = self.BN()(branch_1, training=self.training)
+      # print(self.i)
+      if stride == 1 and x_channels==channels:
+        out = branch_1+branch_0
+      else:
+        out = branch_1
+      # out = tf.add(branch_0, branch_1)
+    self.i += 1
+    return out
+
+  def _inverted_bottleneck(self, x, rate_channels, channels, stride=1):
+    init = tf.contrib.layers.xavier_initializer(dtype=tf.float32)
+
+    in_shape = x.get_shape().as_list()
+    if self.data_format == "NCHW":
+      x_channels = in_shape[1]
+      strides_4d = [1, 1, stride, stride]
+    else :
+      x_channels = in_shape[-1]
+      strides_4d = [1, stride, stride, 1]
+
+    with tf.variable_scope("inverted_bottleneck_{}_t{}_s{}".format(
+        self.i, rate_channels, stride) ) :
+      channel_multiplier = 1
+
+      if x_channels == channels and stride==1:
+        branch_0 = x
+      else:
+        if stride == 2:
+          branch_0 = self.Conv2D(channels, 3, stride)(x)
+        else :
+          branch_0 = self.Conv2D(channels, 1, stride)(x)
+        branch_0 = self.BN()(branch_0, training=self.training)
+
+      # --- 1x1 pointwise
+      n_out = rate_channels * x_channels
       branch_1 = self.Conv2D(n_out, 1)(x)
       branch_1 = self.BN()(branch_1, training=self.training)
       branch_1 = tf.nn.relu6(branch_1)
@@ -213,16 +251,15 @@ class CNN:
       # --- 1x1
       branch_1 = self.Conv2D(channels, 1)(branch_1)
       branch_1 = self.BN()(branch_1, training=self.training)
-      # print(self.i)
-      out = branch_0 + branch_1
-      # out = tf.add(branch_0, branch_1)
+
+      out = tf.add(branch_0, branch_1)
     self.i += 1
     return out
 
 
 if __name__ == '__main__':
   model = CNN(data_format='NCHW')
-  x = tf.constant(0, dtype=tf.uint8, shape=[1, 250, 250, 3])
+  x = tf.constant(0, dtype=tf.uint8, shape=[1, 240, 320, 3])
 
   pr_shape = lambda var : print(var.shape)
   logits = model(x)
