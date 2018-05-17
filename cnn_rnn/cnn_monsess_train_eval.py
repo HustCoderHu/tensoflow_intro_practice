@@ -8,12 +8,23 @@ import cnn
 import runhooks
 
 def main():
-  log_dir = r'/home/hzx/fireDetect-hzx/log20180516/train_eval_log'
+  log_dir = r'/home/hzx/fireDetect-hzx/log20180517/train_eval_log'
   ckpt_dir = path.join(log_dir, 'ckpts')
 
   videoRoot = r'/home/hzx/all_data/'
   labeljson = r'/home/hzx/all_data/label.json'
-  evalSet = [47, 48, 49, 50, 27, 33, 21, 32]
+  # evalSet = [47, 48, 49, 50, 27, 33, 21, 32]
+  evalSet = [47, 48, 49, 51, 52, 59, 61, 62, 63, 65]
+  # 47: {'fire': 1601, 'fireless': 57},
+#  48: {'fire': 3748, 'fireless': 98},
+#  49: {'fire': 3714, 'fireless': 40},
+#   51: {'fire': 4120, 'fireless': 21},
+#  52: {'fire': 4451, 'fireless': 45},
+#   59: {'fire': 6911, 'fireless': 70},
+#    61: {'fire': 1298, 'fireless': 0},
+#  62: {'fire': 3275, 'fireless': 0},
+#  63: {'fire': 5055, 'fireless': 0},
+#   65: {'fire': 6913, 'fireless': 64},
   if not path.exists(log_dir):
     os.mkdir(log_dir)
   if not path.exists(ckpt_dir):
@@ -30,11 +41,11 @@ def main():
   max_steps = (img_num * epoch) // train_batchsz
 
   # ------------------------------ prepare input ------------------------------
-  _h = 250
-  _w = 250
+  _h = 240
+  _w = 320
   dset = cnn_dataset.MyDataset(videoRoot, labeljson, evalSet, resize=(_h, _w))
   dset.setTrainParams(train_batchsz, prefetch=10)
-  dset.setEvalParams(eval_batchsz, prefetch=2)
+  dset.setEvalParams(eval_batchsz, prefetch=3)
   iter_dict = {
     'train': dset.makeTrainIter(),
     'eval': dset.makeEvalIter()
@@ -56,7 +67,7 @@ def main():
   # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ build graph \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
   model = cnn.CNN('NCHW')
   # model = smodel.Simplest('NHWC')
-  logits = model(inputx)
+  logits = model(inputx, castFromUint8=False)
   with tf.name_scope('cross_entropy'):
     loss = tf.losses.sparse_softmax_cross_entropy(labels, logits)
     
@@ -68,7 +79,7 @@ def main():
   with tf.name_scope('optimizer'):
     optimizer = tf.train.AdamOptimizer(1e-4)
     train_op = optimizer.minimize(loss, tf.train.get_or_create_global_step())
-  
+
 
   # ||||||||||||||||||||||||||||||  hooks ||||||||||||||||||||||||||||||
   # >>>  logging
