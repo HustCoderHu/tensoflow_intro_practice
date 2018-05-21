@@ -4,9 +4,12 @@ from os.path import join as pj
 import random as rd
 import json
 from pprint import pprint
+import cv2 as cv
 
 import tensorflow as tf
 from tensorflow.python.ops import random_ops
+
+import dataPreProcess as preProcess
 
 class MyDataset():
   label_id = {'fire': 0, 'fireless': 1}
@@ -25,9 +28,9 @@ class MyDataset():
     self.aspect_ratio_range = [0.85, 1.15]
     # self.aspect_ratio_range = float(_w)/float(_h)
 
-    self.labeldict = MyDataset.decodeLabel(labeljson)
+    self.labeldict = preProcess.decodeLabel(labeljson)
     # pprint(self.labeldict)
-    self.categoryInfo = MyDataset.info(self.labeldict)
+    self.categoryInfo = preProcess.info(self.labeldict)
     pprint(self.categoryInfo)
     self.bboxes = tf.constant([[[0., 0., 1., 1.]]])  
 
@@ -36,38 +39,6 @@ class MyDataset():
     # for idx, name in enumerate(labels):
     #   self.dict_name_id[name] = idx
     return
-  # 解析标签文件
-  # retval {video_idx (int): 范围}
-  # 范围: {'fire': A, 'fireless': B}
-  # A, B: [[0, x], [y, z], [z, .], ...]
-  @staticmethod
-  def decodeLabel(labeljson):
-    with open(labeljson) as f:
-      dat = json.load(f)
-    dat = dat['fire_clips'] # []
-
-    labeldict = {}
-    for it in dat:
-      video_idx = int(it['video_dir'])
-      begin_frame = int(it['begin_frame'])
-      fire_begin_frame = int(it['fire_begin_frame'])
-      # fire_biggest_frame = int(it['fire_biggest_frame'])
-      fire_over_frame = int(it['fire_over_frame'])
-      over_frame = int(it['over_frame'])
-
-      spans = None
-      if video_idx in labeldict.keys():
-        spans = labeldict[video_idx]
-      else:
-        spans = {'fire': [], 'fireless': []}
-        labeldict[video_idx] = spans
-      if begin_frame <= fire_begin_frame-1:
-        spans['fireless'].append(tuple([begin_frame, fire_begin_frame-1]))
-      if fire_over_frame+1 <= over_frame:
-        spans['fireless'].append(tuple([fire_over_frame+1, over_frame]))
-      if fire_begin_frame < fire_over_frame:
-        spans['fire'].append(tuple([fire_begin_frame, fire_over_frame]))
-    return labeldict
 
   def setTrainParams(self, batchsz, prefetch=None, repeat=True):
     self.trainBatchsz = batchsz
@@ -154,7 +125,7 @@ class MyDataset():
     if self.resize == None:
       dset = dataset.map(self._mapfn, num_parallel_calls=os.cpu_count())
     else :
-      dset = dataset.map(self._mapfn_resize, num_parallel_calls=os.cpu_count())
+      dset = dataset.map(self._mapfn_resize_noDataAug, num_parallel_calls=os.cpu_count())
     # dset = dset.shuffle(len(img_list), reshuffle_each_iteration=False)
     
     if self.evalPrefetch == None:
@@ -179,7 +150,7 @@ class MyDataset():
       exampleList = MyDataset.handelFrames(spans)
       # export2file_list.append({'video_idx': video_idx, 'frame':exampleList})
       allPath.extend(exampleList)
-    
+
     # handelFrames = pj(self.videoRoot, 'handelFrames')
     # if not path.exists(handelFrames):
     #   os.mkdir(handelFrames)
@@ -187,7 +158,6 @@ class MyDataset():
     #   vidx = it['video_idx']
     #   with open(pj(handelFrames, '{}.txt'.format(vidx)), 'w') as f:
     #     json.dump(it, f)
-
     # 打乱所有
     rd.shuffle(allPath)
 
@@ -216,25 +186,12 @@ class MyDataset():
     for f in flist:
       # 每帧对应标签
       frameIdx = int(path.splitext(f)[0])
-      labelid = MyDataset.label_id['fireless']
-      if MyDataset.judgeLabel(spans, frameIdx):
-        labelid = MyDataset.label_id['fire']
+      labelid = preProcess.judgeLabel(spans, frameIdx)
+      if labelid < 0:
+        continue
       example = {'imgPath': pj(frames_dir, f), 'label': labelid}
       exampleList.append(example)
-
     return exampleList
-
-  @staticmethod
-  def judgeLabel(spans, frameIdx):
-    spansFire = spans['fire']
-    fire = False
-    for span in spansFire:
-      if span[0] <= frameIdx and frameIdx <= span[1]:
-        fire = True
-        break
-    return fire
-    # spansFireless = spans['fireless']
-
 
   def _mapfn(self, filename, label):
     with tf.device('/cpu:0'):
@@ -258,50 +215,29 @@ class MyDataset():
       # print(distorted_image.dtype) # uint8
       # random_ops.random_uniform([], lower, upper, seed=seed)
       image_random_saturation = tf.image.random_saturation(decoded,
-          0.1, 0.3)
+          0.85, 1.2)
       # print('image_random_saturation')
       # print(image_random_saturation.dtype) # uint8
       _h, _w = self.resize
       # resized = tf.image.resize_image_with_crop_or_pad(decoded, _h, _w)
       flipped = tf.image.random_flip_left_right(image_random_saturation)
-      method=tf.image.ResizeMethod.AREA
-      resized = tf.image.resize_images(flipped, [_h, _w], method)
+      # method=tf.image.ResizeMethod.AREA
+      resized = tf.image.resize_images(flipped, [_h, _w], tf.image.ResizeMethod.AREA)
       # ResizeMethod.AREA 缩小
       # resized float32
-      
     return resized, label, filename
   
-  # 统计每个视频有火和无火的帧数
-  # and all
-  # labeldict: returned by decodeLabel()
-  @staticmethod
-  def info(labeldict):
-    categoryInfo = {}
-    totalFire = 0
-    totalFireless = 0
-    for video_idx, spans in labeldict.items():
-      # 有火帧数
-      spanFire = spans['fire']
-      nFire = 0
-      for span in spanFire:
-        nFire += (span[1]-span[0]+1)
-      # 无火帧数
-      spanFireless = spans['fireless']
-      nFireless = 0
-      for span in spanFireless:
-        nFireless += (span[1]-span[0]+1)
-      # 累计
-      totalFire += nFire
-      totalFireless += nFireless
-      categoryInfo[video_idx] = {'fire': nFire, 'fireless': nFireless}
-      # print('video {}:'.format(video_idx))
-      # pprint({'fire': nFire, 'totalFireless': nFireless})
-    
-    categoryInfo['total:'] = {'totalfire': totalFire, 'totalFireless': totalFireless}
-    # print('total:')
-    # print('fire: {}'.format(totalFire))
-    # print('fireless: {}'.format(totalFireless))
-    return categoryInfo
+  # 无调整，eval 用
+  def _mapfn_resize_noDataAug(self, filename, label):
+    with tf.device('/cpu:0'):
+      # <https://www.tensorflow.org/performance/performance_guide>
+      img_raw = tf.read_file(filename)
+      decoded = tf.image.decode_jpeg(img_raw)
+      _h, _w = self.resize
+      resized = tf.image.resize_images(decoded, [_h, _w], tf.image.ResizeMethod.AREA)
+    return resized, label, filename
+
+  
   # 挑选作为 测试集的视频帧
   # categoryInfo: returned by info()
   @staticmethod
@@ -342,5 +278,35 @@ def tst():
         print(identifier.message)
         break
 
+def tst_adjust_saturation():
+  filename = r'D:\Lab408\cnn_rnn\src_dir\068\000324.jpg'
+  img_raw = tf.read_file(filename)
+  t_decoded = tf.image.decode_jpeg(img_raw)
+  t_flipped = tf.image.flip_left_right(t_decoded)
+  t_image_saturation = tf.image.adjust_saturation(t_decoded,
+          1.2)
+
+  sess_conf = tf.ConfigProto()
+  sess_conf.gpu_options.allow_growth = True
+  with tf.Session(config= sess_conf) as sess:
+    decoded, flipped, image_saturation = sess.run(
+      [t_decoded, t_flipped, t_image_saturation]
+    )
+
+  # https://stackoverflow.com/questions/38890525/visualize-with-opencv-image-read-by-tensorflow
+  cvtColor = cv.cvtColor(decoded, cv.COLOR_RGB2BGR)
+  cv.imshow('decoded', cvtColor)
+
+  cvtColor = cv.cvtColor(flipped, cv.COLOR_RGB2BGR)
+  cv.imshow("flipped", cvtColor)
+  
+  cvtColor = cv.cvtColor(image_saturation, cv.COLOR_RGB2BGR)
+  cv.imshow("image_saturation", cvtColor)
+
+  cv.waitKey()
+
 if __name__ == '__main__':
-  tst()
+  size = 16*240*320*3*4 / 1024
+  print(size)
+  # tst()
+  # tst_adjust_saturation()
