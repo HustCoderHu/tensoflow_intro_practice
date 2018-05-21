@@ -2,21 +2,29 @@ CNN 提取特征形成序列输入到 RNN 中
 
 ---
 # 1 CNN
-## .1 输入
-### .1 划分
+## 1.1 输入
+### 1.1.1 划分
 因为视频相邻帧相似度太高，将所有视频帧混在一起再取出部分作为验证集，其实无法起到验证的作用。  
 应该将某几个视频的所有帧拿出作为验证集
 
-### .2 增强
+### 1.1.2 增强
 因为相似度高，实际样本的数量远小于总帧数，需要引入一些变化  
 暂时采取 `resize_image_with_crop_or_pad` + `随机水平翻转`
 
 `sample_distorted_bounding_box` 可能导致切块太小
 
-## .1 TRAIN
-TODO
+## 1.2 TRAIN and EVAL
+20180518 **TODO**
+- 全集精度
+  - 直接在完整测试集上一次前向，计算整体精度
+- acc group by video
+  - 视频帧间具有相似性，统计每个视频的整体精度，可能会有发现。  
+  - 实现方式
+    > 基于上面的全集测试，label.json里只保留要统计的视频，执行一次前向，可以考虑记录每帧的分析结果(可信度)
+- hard exmaples
+  - 提取错误样本，或者可信度(logits经由softmax计算得出的分布)不够高的样本，作为高难度样本对网络微调
 
-## .2 DEPLOY
+## 1.3 DEPLOY
 TODO
 
 # 2 RNN
@@ -79,7 +87,7 @@ CNN  | `采样频率`, `batch_size`, `比例阈值 HIGH 和 LOW`
 # 4 文件说明
 - cnn
   > 卷积网络定义
-- dataset
+- cnn_dataset
   > cnn 输入 pipeline
 - rnn
   > 循环神经网络定义
