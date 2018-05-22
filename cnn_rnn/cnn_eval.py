@@ -1,64 +1,81 @@
 import time
 import os
 import os.path as path
+from os.path import join as pj
+import json
+from pprint import pprint
+from pprint import pformat
+import multiprocessing as mp
 
 import tensorflow as tf
 
 import dataPreProcess as preProcess
+from EvalDataset import EvalDataset
 import cnn
 
-def main():
-  log_dir = r'/home/hzx/fireDetect-hzx/log20180517/train_eval_log'
-  ckpt_dir = path.join(log_dir, 'ckpts')
+log_dir = r'D:\Lab408\cnn_rnn\20180517'
+log_dir = r'/home/hzx/fireDetect-hzx/log20180517/train_eval_log'
+pureEval = pj(log_dir, 'pureEval')
+# if not path.exists(pureEval):
+  # os.mkdir(pureEval)
 
-  videoRoot = r'/home/hzx/all_data/'
-  labeljson = r'/home/hzx/all_data/label.json'
+ckpt_dir = pj(log_dir, 'ckpts')
+# ckpt_dir = r'D:\Lab408\cnn_rnn\20180517\ckpts'
+ckpt_path = pj(ckpt_dir, 'model.ckpt-4500')
+
+lossSummaryRoot = r'/home/hzx/fireDetect-hzx/log20180517/lossSummaryRoot'
+
+# labeljson = r'D:\Lab408\cnn_rnn\label.json'
+videoRoot = r'/home/hzx/all_data/'
+labeljson = r'/home/hzx/all_data/label.json'
+
+# videoRoot = r'/home/kevin/data/all_data/'
+# labeljson = r'/home/hzx/fireDetect-hzx/label.json'
+
+model = None
+
+batchsz = 100
+
+def computeVideoLoss(videoIdx):
+  global model
   # evalSet = [47, 48, 49, 50, 27, 33, 21, 32]
   evalSet = [47, 48, 49, 51, 52, 59, 61, 62, 63, 65]
-  # 47: {'fire': 1601, 'fireless': 57},
-#  48: {'fire': 3748, 'fireless': 98},
-#  49: {'fire': 3714, 'fireless': 40},
-#   51: {'fire': 4120, 'fireless': 21},
-#  52: {'fire': 4451, 'fireless': 45},
-#   59: {'fire': 6911, 'fireless': 70},
-#    61: {'fire': 1298, 'fireless': 0},
-#  62: {'fire': 3275, 'fireless': 0},
-#  63: {'fire': 5055, 'fireless': 0},
-#   65: {'fire': 6913, 'fireless': 64},
   if not path.exists(log_dir):
-    os.mkdir(log_dir)
+    raise RuntimeError(log_dir+' not exists !')
+    # os.mkdir(log_dir)
   if not path.exists(ckpt_dir):
-    os.mkdir(ckpt_dir)
+    raise RuntimeError(ckpt_dir+' not exists !')
+    # os.mkdir(ckpt_dir)
+
+  # ------------------------------ prepare input ------------------------------
+  _h = 240
+  _w = 320
+  dset = EvalDataset(videoRoot, videoIdx, labeljson, resize=(_h, _w))
+  dset.setEvalParams(100, prefetch=10, cacheFile=None)
+  iterator = dset.makeIter()
+  resized, labels, t_filenames = iterator.get_next()
   
-  batchsz = 100
-
-  inputx = tf.placeholder(tf.uint8, (None, 240, 320, 3))
-
   # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ build graph \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
   model = cnn.CNN('NCHW')
-  # model = smodel.Simplest('NHWC')
-  logits = model(inputx, castFromUint8=True)
+  # The channel dimension of the inputs should be defined. Found `None`.
+  inputx = tf.reshape(resized, [-1, _h, _w, 3])
+  logits = model(inputx, castFromUint8=False)
   
   with tf.name_scope('prediction'):
     t_pred_vec = tf.nn.softmax(logits) # (batch, n_classes)
-  # with tf.name_scope('cross_entropy'):
-    # loss = tf.losses.sparse_softmax_cross_entropy(labels, logits)
+
+  with tf.name_scope('cross_entropy'):
+    # Weighted loss Tensor of the same type as logits. 
+    # If reduction is NONE, this has the same shape as labels; otherwise, it is scalar.
+    t_loss = tf.losses.sparse_softmax_cross_entropy(labels, logits, 
+        reduction=tf.losses.Reduction.NONE)
   # with tf.name_scope('accuracy'):
   #   acc_vec = tf.equal(labels, t_pred_vec)
   #   acc = tf.reduce_mean(tf.cast(acc_vec, tf.float32))
-    
-  # with tf.name_scope('optimizer'):
-  #   optimizer = tf.train.AdamOptimizer(1e-4)
-  #   train_op = optimizer.minimize(loss, tf.train.get_or_create_global_step())
 
   # ||||||||||||||||||||||||||||||  hooks ||||||||||||||||||||||||||||||
   # >>>  logging
   tf.logging.set_verbosity(tf.logging.INFO)
-  # global_step = tf.train.get_or_create_global_step()
-  # tf.identity(global_step, 'g_step')
-  # tf.identity(loss, 'cross_entropy')
-  # tf.identity(acc, 'accuracy')
-  # tensor_lr = optimizer._lr_t
 
   # ////////////////////////////// session config //////////////////////////////
   sess_conf = tf.ConfigProto()
@@ -66,34 +83,138 @@ def main():
   # sess_conf.gpu_options.per_process_gpu_memory_fraction = 0.9
  
   # ------------------------------  start  ------------------------------
+  saver = tf.train.Saver()
+  log2file = pj(pureEval, str(videoIdx)+'.json')
+  log2file_pformat = pj(pureEval, str(videoIdx)+'_pformat.json')
+
+  log_dict = {}
+  # item  frameIdx:{'loss': float, fire': confidence, 'firelss': 1-confidence}
+  with tf.Session(config= sess_conf) as sess:
+    saver.restore(sess, ckpt_path)
+    while True:
+      try:
+        loss, batchConfidence, batchFilenames = sess.run([t_loss, t_pred_vec, t_filenames], 
+            feed_dict={model.training: False})
+        nFrames = loss.shape[0]
+        for i in range(nFrames):
+          frameConf = batchConfidence[i]
+          fireConfidence = frameConf[preProcess.label_id['fire']]
+          # print(type(loss[i])) # np.float32
+          # print(type(fireConfidence))
+          alog = {'loss': float(loss[i]), 'fire': float(fireConfidence),
+              'fireless': float(1-fireConfidence)}
+
+          fname = path.basename(batchFilenames[i])
+          frameIdx = int(path.splitext(fname)[0])
+          # TypeError: 5.3022945e-06 is not JSON serializable
+          log_dict[frameIdx] = alog
+      except tf.errors.OutOfRangeError as identifier:
+        print(identifier.message)
+        break
+
+  with open(log2file, 'w') as f:
+    json.dump(log_dict, f)
+  with open(log2file_pformat, 'w') as f:
+    f.write(pformat(log_dict))
+  print('finish: ' + str(videoIdx))
+  return log_dict
+  
+# 将所给视频有标签帧的loss 添加到summary，方便用tfboard观察
+# videoIdxSet 视频id号集合
+def framesLoss2tfboard(videoIdxSet):
+  # log2file = pj(pureEval, '1.json')
+  # with open(log2file, 'r') as f:
+  #   log_dict = json.load(f)
+  # print(type(log_dict))
+  # for k in log_dict.keys():
+  #   print(log_dict[k])
+  #   break
+  # print(log_dict.values()[0])
+  # print(type(log_dict.values()))
+  # return
+
+  if not path.exists(lossSummaryRoot):
+    os.mkdir(lossSummaryRoot)
+
+  loss = tf.placeholder(tf.float32, ())
+  fireConfidence = tf.placeholder(tf.float32, ())
+
+  summary_protobuf = {
+    'loss': tf.summary.scalar('cross_entropy', loss),
+    'fireConfidence': tf.summary.scalar('fireConfidence', fireConfidence)
+  }
+  merged = tf.summary.merge(list(summary_protobuf.values()))
+
+  sess_conf = tf.ConfigProto()
+  sess_conf.gpu_options.allow_growth = True
+  with tf.Session(config= sess_conf) as sess:
+    for idx in videoIdxSet:
+      # 读取每个视频 帧结果
+      log2file = pj(pureEval, str(idx)+'.json')
+      with open(log2file, 'r') as f:
+        log_dict = json.load(f)
+
+      # 写入 summary
+      summaryDir = pj(lossSummaryRoot, str(idx))
+      summaryWriter = tf.summary.FileWriterCache.get(summaryDir)
+      # for k, _dict in log_dict.values():
+      # keySet = [k for k in log_dict.keys()]
+      # keySet.sort() # 排序不对
+      # print(keySet)
+      # 下面排序正确
+      mapInt2alog = {}
+      for k in log_dict.keys():
+        mapInt2alog[int(k)] = log_dict[k]
+      # print(mapInt2alog.keys())
+
+      for k in mapInt2alog.keys():
+        _dict = mapInt2alog[k]
+        strMerged = sess.run(merged, feed_dict={loss: _dict['loss'],
+            fireConfidence: _dict['fire']})
+        frameIdx = int(k)
+        summaryWriter.add_summary(strMerged, frameIdx)
+      summaryWriter.flush()
+      print('finish video: ' + str(idx))
+
+
+def handleVideo(sess, videoPath, log2file):
   cap = cv.VideoCapture(videoPath)
   frame_count = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
   fps = cap.get(cv.CAP_PROP_FPS) # float
   print('frame_count: {}'.format(frame_count))
   print('fps: {}'.format(fps))
-
   height = cap.get(cv.CAP_PROP_FRAME_HEIGHT)
   width = cap.get(cv.CAP_PROP_FRAME_WIDTH)
   prePolicy = FramePreprocessPolicy((height, width), (240, 320))
 
-  log_dict = {} # item frameIdx:{'pred': label_id, 'loss': int}
-  # item  frameIdx:{'fire': confidence, 'firelss': 1-confidence}
+  log_dict = {}
+  # item  frameIdx:{'loss': float, fire': confidence, 'firelss': 1-confidence}
   frameBase = 0
-  with tf.Session(config= sess_conf) as sess:
-    while(cap.isOpened):
-      # 拼成 batch 处理
-      batchFrame, frameOffset = stackFrames(cap, prePolicy, batchsz)
-      batchConfidence = sess.run(t_pred_vec, feed_dict={inputx:batchFrame})
+  while(cap.isOpened):
+    # 拼成 batch 处理
+    batchFrame, frameOffset = stackFrames(cap, prePolicy, batchsz)
+    loss, batchConfidence = sess.run([t_loss, t_pred_vec], feed_dict={
+      inputx: batchFrame, labels: None})
+    
+    nFrames = batchFrame[0]
+    for idx in range(nFrames):
+      frameConf = batchConfidence[idx]
+      fireConfidence = frameConf[preProcess.label_id['fire']]
+      fire = '{:5.1f}'.format(fireConfidence)
+      fireless = '{:5.1f}'.format(1-fireConfidence)
+      aloss = '{:5.1f}'.format(1-fireConfidence)
+      alog = {'loss': loss[idx], 'fire': float(fire), 'fireless': float(fireless)}
+      log_dict[frameBase+idx] = alog
 
-      for idx in range(batchFrame):
-        frameConf = batchConfidence[idx]
-        fireConfidence = frameConf[preProcess.label_id['fire']]
-        alog = {'fire': fireConfidence, 'fireless': 1-fireConfidence}
-        log_dict[frameBase+idx] = alog
-
-      frameBase += frameOffset
-  return
+    frameBase += frameOffset
   
+  with open(log2file, 'w') as f:
+    json.dump(log_dict, f)
+  print('finish: ' + videoPath)
+  return
+
+# def handleFrames(sess, log2file):
+
 def stackFrames(cap, prePolicy, batchsz):
   frameOffset = 0 # 已读帧
   l = []
@@ -112,8 +233,31 @@ def stackFrames(cap, prePolicy, batchsz):
   else:
     return np.concatenate(l), frameOffset
 
+def displayJson(jfile):
+  with open(jfile, 'r') as f:
+    dat = json.load(f)
+  pprint(dat)
+
+def handleAllVideos():
+  for videoIdx in range(3, 111):
+    p = mp.Process(target=computeVideoLoss, args=(videoIdx,))
+    p.start()
+    p.join()
+
 if __name__ == '__main__':
-  main()
+  # a = {}
+  # a[3] = 'aa'
+  # a[4] = 'bb'
+  # jstr = json.dumps(a)
+  # pprint(jstr)
+  # b = json.loads(jstr)
+  # for key in b.keys():
+  #   print(type(key)) # str
+  #   print(key)
+  # computeVideoLoss(2)
+  # handleAllVideos()
+  videoIdxSet = range(83, 111)
+  framesLoss2tfboard(videoIdxSet)
 
 class FramePreprocessPolicy(object):
   def __init__(self, fromSize, toSize):
@@ -127,61 +271,3 @@ class FramePreprocessPolicy(object):
       frame = op(frame)
     return frame
 
-class EvalDataset():
-  label_id = {'fire': 0, 'fireless': 1}
-  def __init__(self, video, video_idx, labeljson, resize):
-    self.labeldict = preProcess.decodeLabel(labeljson)
-    _h, _w = resize
-    # self.categoryInfo = preProcess.info(self.labeldict)
-    spans = self.labeldict[video_idx]
-    
-    frameIdx = 0
-    img_list = []
-    label_list = []
-    # 读取每帧 构造输入
-    cap = cv.VideoCapture(videoPath)
-    while(cap.isOpened):
-      img = cap.read()
-      labelid = preProcess.judgeLabel(spans, frameIdx)
-      if labelid < 0:
-        continue
-      img_list.append(img)
-      label_list.append(labelid)
-    cap.release()
-
-    self.img_list = img_list
-    self.label_list = label_list
-    self.output_types = None    
-    return
-  
-  def setEvalParams(self, batchsz, prefetch=None, cacheFile=None):
-    self.batchsz = batchsz
-    self.prefetch = prefetch
-    self.cacheFile = cacheFile
-    return
-
-  def makeIter(self):
-    t_imglist = tf.constant(self.img_list, dtype=tf.string)
-    t_lbllist = tf.constant(self.label_list, dtype=tf.int32)
-    dataset = tf.data.Dataset().from_tensor_slices((t_imglist, t_lbllist))
-    dset = dataset.map(self._mapfn, num_parallel_calls=os.cpu_count())
-  
-    if self.cacheFile != None:
-      if self.cacheFile == 'mem':
-        dset = dset.cache()
-      else :
-        dset = dset.cache(cacheFile)
-    dset = dset.batch(self.batchsz)
-    if self.prefetch != None:
-        dset = dset.prefetch(self.prefetch)
-    self.output_types = dset.output_types
-    return dset.make_one_shot_iterator()
-
-  def _mapfn(self):
-    with tf.device('/cpu:0'):
-      # <https://www.tensorflow.org/performance/performance_guide>
-      img_raw = tf.read_file(filename)
-      decoded = tf.image.decode_jpeg(img_raw)
-      _h, _w = self.resize
-      resized = tf.image.resize_images(decoded, [_h, _w], tf.image.ResizeMethod.AREA)
-    return resized, label, filename
