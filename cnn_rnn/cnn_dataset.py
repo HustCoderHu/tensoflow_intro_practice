@@ -282,20 +282,27 @@ def tst_adjust_saturation():
   filename = r'D:\Lab408\cnn_rnn\src_dir\068\000324.jpg'
   img_raw = tf.read_file(filename)
   t_decoded = tf.image.decode_jpeg(img_raw)
+  _h = 240
+  _w = 320
+  t_resized = tf.image.resize_images(t_decoded, (_h, _w))
+  t_resized = tf.image.convert_image_dtype(t_resized, tf.uint8)
   t_flipped = tf.image.flip_left_right(t_decoded)
   t_image_saturation = tf.image.adjust_saturation(t_decoded,
-          1.2)
+          1.4)
 
   sess_conf = tf.ConfigProto()
   sess_conf.gpu_options.allow_growth = True
   with tf.Session(config= sess_conf) as sess:
-    decoded, flipped, image_saturation = sess.run(
-      [t_decoded, t_flipped, t_image_saturation]
+    decoded, resized, flipped, image_saturation = sess.run(
+      [t_decoded, t_resized, t_flipped, t_image_saturation]
     )
 
   # https://stackoverflow.com/questions/38890525/visualize-with-opencv-image-read-by-tensorflow
   cvtColor = cv.cvtColor(decoded, cv.COLOR_RGB2BGR)
   cv.imshow('decoded', cvtColor)
+
+  cvtColor = cv.cvtColor(resized, cv.COLOR_RGB2BGR)
+  cv.imshow('resized', cvtColor)
 
   cvtColor = cv.cvtColor(flipped, cv.COLOR_RGB2BGR)
   cv.imshow("flipped", cvtColor)
@@ -306,7 +313,7 @@ def tst_adjust_saturation():
   cv.waitKey()
 
 if __name__ == '__main__':
-  size = 16*240*320*3*4 / 1024
-  print(size)
+  # size = 16*240*320*3*4 / 1024
+  # print(size)
   # tst()
-  # tst_adjust_saturation()
+  tst_adjust_saturation()
