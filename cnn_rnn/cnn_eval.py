@@ -5,7 +5,8 @@ from os.path import join as pj
 import json
 from pprint import pprint
 from pprint import pformat
-import multiprocessing as mp
+from multiprocessing import Process, Queue
+from concurrent.futures import ProcessPoolExecutor
 
 import tensorflow as tf
 
@@ -176,6 +177,80 @@ def framesLoss2tfboard(videoIdxSet):
       summaryWriter.flush()
       print('finish video: ' + str(idx))
 
+# 序列化成 protobuff 是cpu计算密集型
+# 多进程版
+def mp_framesLoss2tfboard(videoIdxSet):
+  max_workers = os.cpu_count()
+  q = Queue(max_workers)
+
+  paramDict = {'sess': None, 'mergedOp': None, 'loss': None,
+      'fireConfidence': None}
+  sess_conf = tf.ConfigProto()
+  sess_conf.gpu_options.allow_growth = True
+  # 准备核心数对应的 n 组参数
+  for i in range(max_workers):
+    graph = tf.Graph()
+    with graph.as_default():
+      loss = tf.placeholder(tf.float32, ())
+      fireConfidence = tf.placeholder(tf.float32, ())
+      summary_protobuf = {
+          'loss': tf.summary.scalar('cross_entropy', loss),
+          'fireConfidence': tf.summary.scalar('fireConfidence', fireConfidence)
+      }
+      mergedOp = tf.summary.merge(list(summary_protobuf.values()))
+      sess = tf.Session(config=sess_conf)
+      paramDict['sess'] = sess
+      paramDict['mergedOp'] = mergedOp
+      paramDict['loss'] = loss
+      paramDict['fireConfidence'] = fireConfidence
+    # 参数组入队
+    q.put(paramDict)
+  # 进程池启动
+  with ProcessPoolExecutor(max_workers) as executor:
+    for videoIdx in videoIdxSet:
+      itr['video_root'] = videoNpyRoot
+      # res = executor.map()
+      res = executor.submit(worker_perVideoNpy, q, videoIdx)
+      # resultList.append(res)
+      # break
+    executor.shutdown()
+  print('--- worker_computeAvideo executor shutdown()')
+
+  # 释放资源
+  for i in range(max_workers):
+    paramDict = q.get(True)
+    paramDict['sess'].close()
+  return
+
+def worker_computeAvideo(q, videoIdx):
+  # 先获取资源
+  paramDict = q.get(True) # True 队列空时阻塞
+  sess = paramDict['sess']
+  mergedOp = paramDict['mergedOp']
+  loss = paramDict['loss']
+  fireConfidence = paramDict['fireConfidence']
+
+  log2file = pj(pureEval, str(videoIdx)+'.json')
+  with open(log2file, 'r') as f:
+    log_dict = json.load(f)
+  # 写入 summary
+  summaryDir = pj(lossSummaryRoot, str(videoIdx))
+  summaryWriter = tf.summary.FileWriterCache.get(summaryDir)
+  mapInt2alog = {}
+  for k in log_dict.keys():
+    mapInt2alog[int(k)] = log_dict[k]
+
+  for k in mapInt2alog.keys():
+    _dict = mapInt2alog[k]
+    strMerged = sess.run(mergedOp, feed_dict={loss: _dict['loss'],
+        fireConfidence: _dict['fire']})
+    frameIdx = int(k)
+    summaryWriter.add_summary(strMerged, frameIdx)
+  summaryWriter.flush()
+
+  q.put(paramDict, True) # 资源归还 True 队列满时阻塞
+  print('finish video: ' + str(videoIdx))
+  return
 
 def handleVideo(sess, videoPath, log2file):
   cap = cv.VideoCapture(videoPath)
@@ -240,7 +315,7 @@ def displayJson(jfile):
 
 def handleAllVideos():
   for videoIdx in range(3, 111):
-    p = mp.Process(target=computeVideoLoss, args=(videoIdx,))
+    p = Process(target=computeVideoLoss, args=(videoIdx,))
     p.start()
     p.join()
 
