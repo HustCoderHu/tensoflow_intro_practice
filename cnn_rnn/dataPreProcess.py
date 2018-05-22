@@ -33,7 +33,8 @@ def decodeLabel(labeljson):
       spans['fire'].append(tuple([fire_begin_frame, fire_over_frame]))
   return labeldict
 
-def judgeLabel(spans, frameIdx):
+def judgeLabel_ease(labeldict, video_idx, frameIdx):
+  spans = labeldict[video_idx]
   # labelid = -1
   spansFire = spans['fire']
   for span in spansFire:
@@ -45,6 +46,18 @@ def judgeLabel(spans, frameIdx):
       return label_id['fireless']
   return -1
     # spansFireless = spans['fireless']
+
+def judgeLabel(spans, frameIdx):
+  # labelid = -1
+  spansFire = spans['fire']
+  for span in spansFire:
+    if span[0] <= frameIdx and frameIdx <= span[1]:
+      return label_id['fire']
+  spansFireless = spans['fireless']
+  for span in spansFireless:
+    if span[0] <= frameIdx and frameIdx <= span[1]:
+      return label_id['fireless']
+  return -1
 
 # 统计每个视频有火和无火的帧数
 # and all
