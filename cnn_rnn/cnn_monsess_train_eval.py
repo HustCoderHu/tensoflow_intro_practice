@@ -13,8 +13,10 @@ def main():
 
   videoRoot = r'/home/hzx/all_data/'
   labeljson = r'/home/hzx/all_data/label.json'
-  # evalSet = [47, 48, 49, 50, 27, 33, 21, 32]
-  evalSet = [47, 48, 49, 51, 52, 59, 61, 62, 63, 65]
+  videoRoot = r'/home/kevin/data/all_data/'
+  labeljson = r'/home/hzx/fireDetect-hzx/label.json'
+  evalSet = [47, 48, 49, 50, 27, 33, 21, 32]
+  # evalSet = [47, 48, 49, 51, 52, 59, 61, 62, 63, 65]
   # 47: {'fire': 1601, 'fireless': 57},
 #  48: {'fire': 3748, 'fireless': 98},
 #  49: {'fire': 3714, 'fireless': 40},
@@ -79,7 +81,6 @@ def main():
   with tf.name_scope('optimizer'):
     optimizer = tf.train.AdamOptimizer(1e-4)
     train_op = optimizer.minimize(loss, tf.train.get_or_create_global_step())
-
 
   # ||||||||||||||||||||||||||||||  hooks ||||||||||||||||||||||||||||||
   # >>>  logging
