@@ -84,8 +84,23 @@ def info(labeldict):
     # print('video {}:'.format(video_idx))
     # pprint({'fire': nFire, 'totalFireless': nFireless})
   
-  categoryInfo['total:'] = {'totalfire': totalFire, 'totalFireless': totalFireless}
+  categoryInfo['totalfire:'] = totalFire
+  categoryInfo['totalFireless:'] = totalFireless
+  categoryInfo['all:'] = totalFire + totalFireless
   # print('total:')
   # print('fire: {}'.format(totalFire))
   # print('fireless: {}'.format(totalFireless))
   return categoryInfo
+
+def tst():
+  labeljson = r'D:\Lab408\cnn_rnn\label.json'
+
+  labeldict = decodeLabel(labeljson)
+  videoIdx = 14
+  frameIdx = 352
+  label_id = judgeLabel_ease(labeldict, videoIdx, frameIdx)
+  print(label_id)
+  return
+
+if __name__ == '__main__':
+  tst()

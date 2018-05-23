@@ -52,10 +52,6 @@ class MyDataset():
     return
 
   def makeTrainIter(self):
-    with open(self.labeljson) as f:
-      dat = json.load(f)
-    dat = dat['fire_clips']
-
     part_labeldict = {}
     for video_idx, spans in self.labeldict.items():
       # 排除测试用的视频帧
@@ -77,9 +73,10 @@ class MyDataset():
     img_list, label_list = self.genFrames_PathLabels(part_labeldict)
     print('images num: {}'.format(len(img_list)))
 
-    t_imglist = tf.constant(img_list, dtype=tf.string)
-    t_lbllist = tf.constant(label_list, dtype=tf.int32)
-    dataset = tf.data.Dataset().from_tensor_slices((t_imglist, t_lbllist))
+    # t_imglist = tf.constant(img_list, dtype=tf.string)
+    # t_lbllist = tf.constant(label_list, dtype=tf.int32)
+    # dataset = tf.data.Dataset().from_tensor_slices((t_imglist, t_lbllist))
+    dataset = tf.data.Dataset().from_tensor_slices((img_list, label_list))
     if self.resize == None:
       dset = dataset.map(self._mapfn, num_parallel_calls=os.cpu_count())
     else :
@@ -104,10 +101,6 @@ class MyDataset():
   # end makeIter()
 
   def makeEvalIter(self):
-    with open(self.labeljson) as f:
-      dat = json.load(f)
-    dat = dat['fire_clips']
-
     part_labeldict = {}
     for video_idx, spans in self.labeldict.items():
       # 测试用的视频帧
@@ -148,6 +141,7 @@ class MyDataset():
       spans = part_labeldict[video_idx]
       spans['frames_dir'] = pj(self.videoRoot, '{:0>3d}'.format(video_idx))
       exampleList = MyDataset.handelFrames(spans)
+
       # export2file_list.append({'video_idx': video_idx, 'frame':exampleList})
       allPath.extend(exampleList)
 
@@ -166,6 +160,12 @@ class MyDataset():
     for it in allPath:
       pathList.append(it['imgPath'])
       labelList.append(it['label'])
+    
+    # 两类数量统计
+    labeldict = {-1: 0, 0: 0, 1: 0}
+    for lid in labelList:
+      labeldict[lid] += 1
+    pprint(labeldict)
     return pathList, labelList
   
   # 每个视频所有帧构成 list
@@ -247,19 +247,21 @@ class MyDataset():
 def tst():
   videoRoot = r'D:\Lab408\cnn_rnn\src_dir'
   labeljson = r'D:\Lab408\cnn_rnn\label.json'
+
+  videoRoot = r'W:\hzx\all_data'
   # videoRoot = r'/home/hzx/all_data/'
   # labeljson = r'/home/hzx/all_data/label.json'
 
   evalSet = [47, 48, 49, 50, 27, 33, 21, 32]
 
-  dataset = MyDataset(videoRoot, labeljson, evalSet, resize=(250, 250))
+  dataset = MyDataset(videoRoot, labeljson, evalSet, resize=(240, 320))
   dataset.setTrainParams(50, prefetch=10)
   dataset.setEvalParams(200, prefetch=5)
-  trainIter = dataset.makeTrainIter()
-  evalIter = dataset.makeEvalIter()
-  inputx, labels, filename = trainIter.get_next()
-  print(inputx.dtype)
-  print(inputx.shape)
+  # trainIter = dataset.makeTrainIter()
+  # evalIter = dataset.makeEvalIter()
+  # inputx, labels, filename = trainIter.get_next()
+  # print(inputx.dtype)
+  # print(inputx.shape)
   return
 
   resized, filename = dataset(4, prefetch_batch=None)
@@ -315,5 +317,9 @@ def tst_adjust_saturation():
 if __name__ == '__main__':
   # size = 16*240*320*3*4 / 1024
   # print(size)
-  # tst()
-  tst_adjust_saturation()
+  # l = list(range(1,10))
+  # rd.shuffle(l)
+  # print(l)
+  # print(162563+14375)
+  tst()
+  # tst_adjust_saturation()
