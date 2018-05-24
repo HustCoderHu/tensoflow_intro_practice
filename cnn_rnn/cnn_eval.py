@@ -10,37 +10,52 @@ from concurrent.futures import ProcessPoolExecutor
 
 import tensorflow as tf
 
+import var_config as cf
 import dataPreProcess as preProcess
 from EvalDataset import EvalDataset
 import cnn
 
-log_dir = r'D:\Lab408\cnn_rnn\20180517'
-log_dir = r'/home/hzx/fireDetect-hzx/log20180517/train_eval_log'
-pureEval = pj(log_dir, 'pureEval')
-# if not path.exists(pureEval):
-  # os.mkdir(pureEval)
-
-ckpt_dir = pj(log_dir, 'ckpts')
-# ckpt_dir = r'D:\Lab408\cnn_rnn\20180517\ckpts'
-ckpt_path = pj(ckpt_dir, 'model.ckpt-4500')
-
-lossSummaryRoot = r'/home/hzx/fireDetect-hzx/log20180517/lossSummaryRoot'
-
-# labeljson = r'D:\Lab408\cnn_rnn\label.json'
-videoRoot = r'/home/hzx/all_data/'
-labeljson = r'/home/hzx/all_data/label.json'
+cwd = cf.cwd
+labeljson = cf.labeljson
+newVideoRoot = pj(cwd, 'all_data')
+videoRoot = cf.videoRoot
+# labeljson = r'/home/hzx/all_data/label.json'
 
 # videoRoot = r'/home/kevin/data/all_data/'
 # labeljson = r'/home/hzx/fireDetect-hzx/label.json'
+
+log_dir = pj(cwd, 'train_eval_log')
+lossSummaryRoot = pj(cwd, 'lossSummaryRoot')
+pureEval = pj(cwd, 'pureEval')
+
+ckpt_dir = pj(log_dir, 'ckpts')
+# ckpt_dir = r'D:\Lab408\cnn_rnn\20180517\ckpts'
+ckpt_path = pj(ckpt_dir, 'model.ckpt-1800')
+ckpt_path = pj(ckpt_dir, 'model.ckpt-1200')
+
 
 model = None
 
 batchsz = 100
 
-def computeVideoLoss(videoIdx):
+def handleAllVideos():
+  if not path.exists(pureEval):
+    os.mkdir(pureEval)
+
+  videoSet = cf.trainSet
+  
+  for videoIdx in range(1, 82):
+    if videoIdx in videoSet:
+      videoSet.remove(videoIdx)
+  print(videoSet)
+  for videoIdx in videoSet:
+    p = Process(target=forwardVideoLoss, args=(videoIdx,))
+    p.start()
+    p.join()
+
+# 计算每帧的loss
+def forwardVideoLoss(videoIdx):
   global model
-  # evalSet = [47, 48, 49, 50, 27, 33, 21, 32]
-  evalSet = [47, 48, 49, 51, 52, 59, 61, 62, 63, 65]
   if not path.exists(log_dir):
     raise RuntimeError(log_dir+' not exists !')
     # os.mkdir(log_dir)
@@ -63,7 +78,8 @@ def computeVideoLoss(videoIdx):
   logits = model(inputx, castFromUint8=False)
   
   with tf.name_scope('prediction'):
-    t_pred_vec = tf.nn.softmax(logits) # (batch, n_classes)
+    t_pred_softmax = tf.nn.softmax(logits) # (batch, n_classes)
+    t_pred = tf.argmax(logits, axis=1, output_type=tf.int32)
 
   with tf.name_scope('cross_entropy'):
     # Weighted loss Tensor of the same type as logits. 
@@ -71,7 +87,7 @@ def computeVideoLoss(videoIdx):
     t_loss = tf.losses.sparse_softmax_cross_entropy(labels, logits, 
         reduction=tf.losses.Reduction.NONE)
   # with tf.name_scope('accuracy'):
-  #   acc_vec = tf.equal(labels, t_pred_vec)
+  #   acc_vec = tf.equal(labels, t_pred_softmax)
   #   acc = tf.reduce_mean(tf.cast(acc_vec, tf.float32))
 
   # ||||||||||||||||||||||||||||||  hooks ||||||||||||||||||||||||||||||
@@ -94,7 +110,8 @@ def computeVideoLoss(videoIdx):
     saver.restore(sess, ckpt_path)
     while True:
       try:
-        loss, batchConfidence, batchFilenames = sess.run([t_loss, t_pred_vec, t_filenames], 
+        loss, batchConfidence, pred, batchFilenames = sess.run(
+            [t_loss, t_pred_softmax, t_pred, t_filenames], 
             feed_dict={model.training: False})
         nFrames = loss.shape[0]
         for i in range(nFrames):
@@ -102,8 +119,8 @@ def computeVideoLoss(videoIdx):
           fireConfidence = frameConf[preProcess.label_id['fire']]
           # print(type(loss[i])) # np.float32
           # print(type(fireConfidence))
-          alog = {'loss': float(loss[i]), 'fire': float(fireConfidence),
-              'fireless': float(1-fireConfidence)}
+          alog = {'loss': float(loss[i]), 'pred': int(pred[i]),
+              'fire': float(fireConfidence), 'fireless': float(1-fireConfidence)}
 
           fname = path.basename(batchFilenames[i])
           frameIdx = int(path.splitext(fname)[0])
@@ -119,7 +136,48 @@ def computeVideoLoss(videoIdx):
     f.write(pformat(log_dict))
   print('finish: ' + str(videoIdx))
   return log_dict
-  
+
+# 计算每个视频精度，以及整体精度 输出到json文件
+def acc2file(labeljson):
+  labeldict = preProcess.decodeLabel(labeljson)
+  tofile = pj(cwd, 'acc.json')
+
+  statistic = {}
+  totalHit = 0
+  totalFrames = 0
+  for videoIdx in range(1, 111):
+    hit, frames, acc = computeAccuray(labeldict, videoIdx)
+    alog = {'hit': hit, 'frames': frames, 'acc': acc}
+    statistic[videoIdx] = alog
+    # 累计
+    totalHit += hit
+    totalFrames += frames
+  statistic['total'] = {'hit': totalHit, 'frames': totalFrames, 
+      'acc': totalHit / totalFrames}
+  pprint(statistic)
+  # with open(tofile, 'w') as f:
+    # json.dump(statistic, f)
+  return
+
+
+def computeAccuray(labeldict, videoIdx):
+  lossfile = pj(pureEval, str(videoIdx)+'.json')
+  if not path.exists(lossfile):
+    return 0, 0, 0
+  with open(lossfile, 'r') as f:
+    lossdict = json.load(f)
+
+  hit = 0
+  for strk, alog in lossdict.items():
+    pred = alog['pred']
+    frameIdx = int(strk)
+    exactLabel = preProcess.judgeLabel_ease(labeldict, videoIdx, frameIdx)
+    if pred == exactLabel:
+      hit += 1
+  frames = len(lossdict.keys())
+  acc = hit / frames
+  return hit, frames, acc
+
 # 将所给视频有标签帧的loss 添加到summary，方便用tfboard观察
 # videoIdxSet 视频id号集合
 def framesLoss2tfboard(videoIdxSet):
@@ -177,7 +235,8 @@ def framesLoss2tfboard(videoIdxSet):
       summaryWriter.flush()
       print('finish video: ' + str(idx))
 
-# 序列化成 protobuff 是cpu计算密集型
+# 将所给视频有标签帧的loss 添加到summary，方便用tfboard观察
+# 序列化成 protobuff 是 cpu 计算密集型
 # 多进程版
 def mp_framesLoss2tfboard(videoIdxSet):
   max_workers = os.cpu_count()
@@ -187,7 +246,7 @@ def mp_framesLoss2tfboard(videoIdxSet):
       'fireConfidence': None}
   sess_conf = tf.ConfigProto()
   sess_conf.gpu_options.allow_growth = True
-  # 准备核心数对应的 n 组参数
+  # 准备 cpu核心数 对应的 n 组参数
   for i in range(max_workers):
     graph = tf.Graph()
     with graph.as_default():
@@ -208,9 +267,8 @@ def mp_framesLoss2tfboard(videoIdxSet):
   # 进程池启动
   with ProcessPoolExecutor(max_workers) as executor:
     for videoIdx in videoIdxSet:
-      itr['video_root'] = videoNpyRoot
       # res = executor.map()
-      res = executor.submit(worker_perVideoNpy, q, videoIdx)
+      res = executor.submit(worker_computeAvideo, q, videoIdx)
       # resultList.append(res)
       # break
     executor.shutdown()
@@ -252,72 +310,10 @@ def worker_computeAvideo(q, videoIdx):
   print('finish video: ' + str(videoIdx))
   return
 
-def handleVideo(sess, videoPath, log2file):
-  cap = cv.VideoCapture(videoPath)
-  frame_count = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
-  fps = cap.get(cv.CAP_PROP_FPS) # float
-  print('frame_count: {}'.format(frame_count))
-  print('fps: {}'.format(fps))
-  height = cap.get(cv.CAP_PROP_FRAME_HEIGHT)
-  width = cap.get(cv.CAP_PROP_FRAME_WIDTH)
-  prePolicy = FramePreprocessPolicy((height, width), (240, 320))
-
-  log_dict = {}
-  # item  frameIdx:{'loss': float, fire': confidence, 'firelss': 1-confidence}
-  frameBase = 0
-  while(cap.isOpened):
-    # 拼成 batch 处理
-    batchFrame, frameOffset = stackFrames(cap, prePolicy, batchsz)
-    loss, batchConfidence = sess.run([t_loss, t_pred_vec], feed_dict={
-      inputx: batchFrame, labels: None})
-    
-    nFrames = batchFrame[0]
-    for idx in range(nFrames):
-      frameConf = batchConfidence[idx]
-      fireConfidence = frameConf[preProcess.label_id['fire']]
-      fire = '{:5.1f}'.format(fireConfidence)
-      fireless = '{:5.1f}'.format(1-fireConfidence)
-      aloss = '{:5.1f}'.format(1-fireConfidence)
-      alog = {'loss': loss[idx], 'fire': float(fire), 'fireless': float(fireless)}
-      log_dict[frameBase+idx] = alog
-
-    frameBase += frameOffset
-  
-  with open(log2file, 'w') as f:
-    json.dump(log_dict, f)
-  print('finish: ' + videoPath)
-  return
-
-# def handleFrames(sess, log2file):
-
-def stackFrames(cap, prePolicy, batchsz):
-  frameOffset = 0 # 已读帧
-  l = []
-  while frameOffset < batchsz:
-    ret, frame = cap.read()
-    if ret == False:
-      break
-    frameOffset += 1
-    # 帧采样
-    frame = prePolicy(frame)
-    l.append(frame[np.newaxis, :, :, :])
-  # 拼成 batch
-  # batchFrame = np.concatenate(l)
-  if len(l) == 0:
-    return None, frameOffset
-  else:
-    return np.concatenate(l), frameOffset
-
 def displayJson(jfile):
   with open(jfile, 'r') as f:
     dat = json.load(f)
   pprint(dat)
-
-def handleAllVideos():
-  for videoIdx in range(3, 111):
-    p = Process(target=computeVideoLoss, args=(videoIdx,))
-    p.start()
-    p.join()
 
 if __name__ == '__main__':
   # a = {}
@@ -329,10 +325,15 @@ if __name__ == '__main__':
   # for key in b.keys():
   #   print(type(key)) # str
   #   print(key)
-  # computeVideoLoss(2)
-  # handleAllVideos()
-  videoIdxSet = range(83, 111)
-  framesLoss2tfboard(videoIdxSet)
+
+  # if not path.exists(pureEval):
+  #   os.mkdir(pureEval)
+  # videoIdxSet = range(83, 111)
+  # forwardVideoLoss(2)
+  handleAllVideos()
+  print('aaaaa')
+  # acc2file(labeljson)
+  # framesLoss2tfboard(videoIdxSet)
 
 class FramePreprocessPolicy(object):
   def __init__(self, fromSize, toSize):
