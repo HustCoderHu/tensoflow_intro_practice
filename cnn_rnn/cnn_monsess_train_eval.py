@@ -1,21 +1,22 @@
 import time
 import os
 import os.path as path
+from os.path import join as pj
 import tensorflow as tf
 
+import var_config as cf
 import cnn_dataset
 import cnn
 import runhooks
 
 def main():
-  log_dir = r'/home/hzx/fireDetect-hzx/log20180517/train_eval_log'
+  cwd = cf.cwd
+  log_dir = pj(cwd, 'train_eval_log')
   ckpt_dir = path.join(log_dir, 'ckpts')
 
-  videoRoot = r'/home/hzx/all_data/'
-  labeljson = r'/home/hzx/all_data/label.json'
-  videoRoot = r'/home/kevin/data/all_data/'
-  labeljson = r'/home/hzx/fireDetect-hzx/label.json'
-  evalSet = [47, 48, 49, 50, 27, 33, 21, 32]
+  videoRoot = pj(cwd, 'all_data')
+  labeljson = cf.labeljson
+  evalSet = cf.evalSet
   # evalSet = [47, 48, 49, 51, 52, 59, 61, 62, 63, 65]
   # 47: {'fire': 1601, 'fireless': 57},
 #  48: {'fire': 3748, 'fireless': 98},

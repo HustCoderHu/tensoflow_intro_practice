@@ -4,7 +4,7 @@ from os.path import join as pj
 import random as rd
 import json
 from pprint import pprint
-import cv2 as cv
+# import cv2 as cv
 
 import tensorflow as tf
 from tensorflow.python.ops import random_ops
@@ -30,9 +30,9 @@ class MyDataset():
 
     self.labeldict = preProcess.decodeLabel(labeljson)
     # pprint(self.labeldict)
-    self.categoryInfo = preProcess.info(self.labeldict)
-    pprint(self.categoryInfo)
-    self.bboxes = tf.constant([[[0., 0., 1., 1.]]])  
+    # self.categoryInfo = preProcess.info(self.labeldict)
+    # pprint(self.categoryInfo)
+    # self.bboxes = tf.constant([[[0., 0., 1., 1.]]])  
 
     # labels = os.listdir(videoRoot)
     # labels.sort()
@@ -87,6 +87,7 @@ class MyDataset():
       dset = dset.cache()
     if self.trainRepeat:
       dset = dset.repeat()
+    dest = dset.shuffle(200)
     dset = dset.batch(self.trainBatchsz)
     if self.trainPrefetch != None:
       dset = dset.prefetch(self.trainPrefetch)
@@ -141,6 +142,8 @@ class MyDataset():
       spans = part_labeldict[video_idx]
       spans['frames_dir'] = pj(self.videoRoot, '{:0>3d}'.format(video_idx))
       exampleList = MyDataset.handelFrames(spans)
+      print('videoIdx: ' + str(video_idx))
+      print('examples: ' + str(len(exampleList)))
 
       # export2file_list.append({'video_idx': video_idx, 'frame':exampleList})
       allPath.extend(exampleList)
@@ -215,7 +218,7 @@ class MyDataset():
       # print(distorted_image.dtype) # uint8
       # random_ops.random_uniform([], lower, upper, seed=seed)
       image_random_saturation = tf.image.random_saturation(decoded,
-          0.85, 1.2)
+          0.85, 1.4)
       # print('image_random_saturation')
       # print(image_random_saturation.dtype) # uint8
       _h, _w = self.resize
@@ -245,20 +248,22 @@ class MyDataset():
     return []
 
 def tst():
-  videoRoot = r'D:\Lab408\cnn_rnn\src_dir'
-  labeljson = r'D:\Lab408\cnn_rnn\label.json'
+  cwd = cf.cwd
+  log_dir = pj(cwd, 'train_eval_log')
+  ckpt_dir = path.join(log_dir, 'ckpts')
 
-  videoRoot = r'W:\hzx\all_data'
-  # videoRoot = r'/home/hzx/all_data/'
-  # labeljson = r'/home/hzx/all_data/label.json'
-
+  videoRoot = pj(cwd, 'all_data')
+  # videoRoot = r'/home/hzx/all_data_reduced/'
+  labeljson = cf.labeljson
+  # videoRoot = r'/home/kevin/data/all_data/'
+  # labeljson = r'/home/hzx/fireDetect-hzx/label.json'
   evalSet = [47, 48, 49, 50, 27, 33, 21, 32]
 
   dataset = MyDataset(videoRoot, labeljson, evalSet, resize=(240, 320))
   dataset.setTrainParams(50, prefetch=10)
   dataset.setEvalParams(200, prefetch=5)
-  # trainIter = dataset.makeTrainIter()
-  # evalIter = dataset.makeEvalIter()
+  trainIter = dataset.makeTrainIter()
+  evalIter = dataset.makeEvalIter()
   # inputx, labels, filename = trainIter.get_next()
   # print(inputx.dtype)
   # print(inputx.shape)
