@@ -1,4 +1,5 @@
 import time
+import sys
 import os
 import os.path as path
 from os.path import join as pj
@@ -7,6 +8,8 @@ import tensorflow as tf
 import var_config as cf
 import cnn_dataset
 import cnn
+repoRoot = r'E:\github_repo\tensorflow_intro_practice'
+sys.path.append(pj(repoRoot, 'proj', 'needle_mushroom'))
 import runhooks
 
 def main():
@@ -182,5 +185,6 @@ def main():
   return
 
 if __name__ == '__main__':
-  main()
+  # main()
+  print(tf.__version__)
 
