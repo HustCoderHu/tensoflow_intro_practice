@@ -18,11 +18,11 @@ class Simplest:
     self.dtype = dtype
     self.layer_data_format = 'channels_last' if data_format == 'NHWC' \
         else 'channels_first'
-    self.training = tf.placeholder(tf.bool, [])
+    self.is_training = tf.placeholder(tf.bool, [])
     return
 
   def __call__(self, inputs):
-    # self.training
+    # self.is_training
     pr_shape = lambda var : print(var.shape)
 
     out = self.layer_conv2d(inputs, n_out=64, kernel_sz=7, strides=4, activation=tf.nn.relu6)
@@ -36,7 +36,7 @@ class Simplest:
     # pr_shape(out)
 
     out = self.fc(out, 2)
-    # out = tf.layers.dropout(out, training=self.training)
+    # out = tf.layers.dropout(out, training=self.is_training)
     # out = self.fc(out, 2)
     # out = self.layer_conv2d(out, 10, kernel_sz=3, strides=2, activation=tf.nn.relu6)
     # pr_shape(out)

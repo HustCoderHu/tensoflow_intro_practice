@@ -123,7 +123,7 @@ def main():
     iter_dict= iter_dict,
     eval_steps= eval_interval,
     train_op= train_op,
-    training= model.training,
+    training= model.is_training,
     holder_handle= holder_handle,
     summary_conf= summary_conf,
     summary_protobuf= summary_protobuf,
@@ -166,7 +166,7 @@ def main():
       hooks= all_hooks, stop_grace_period_secs= 3600) as mon_sess:
     while not mon_sess.should_stop():
       step = mon_sess.run(tf.train.get_global_step()) # arg from retval of _EvalHook before_run()
-      # training, step = mon_sess.run([model.training, tf.train.get_global_step()]) # arg from retval of _EvalHook before_run()
+      # training, step = mon_sess.run([model.is_training, tf.train.get_global_step()]) # arg from retval of _EvalHook before_run()
       # if not training:
         # print('step {}: eval xxxxxxxxx'.format(step))
       # print(lr)

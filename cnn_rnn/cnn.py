@@ -8,7 +8,7 @@ import tensorflow.contrib as tc
 
 class CNN:
   def __init__(self, data_format='NHWC', dtype=tf.float32):
-    self.training = tf.placeholder(tf.bool, [])
+    self.is_training = tf.placeholder(tf.bool, [])
     
     self.w_initer=tc.layers.xavier_initializer(dtype)
     self.data_format = data_format
@@ -47,7 +47,7 @@ class CNN:
     return out
 
   def __call__(self, inputs, castFromUint8=True):
-    # self.training
+    # self.is_training
     pr_shape = lambda var : print(var.shape)
     
     # CNN
@@ -61,7 +61,7 @@ class CNN:
     with tf.variable_scope("init_conv") :
       out = self.Conv2D(32, 3, strides=2)(inputs)
       # pr_shape(out)
-      out = self.BN()(out, training=self.training)
+      out = self.BN()(out, training=self.is_training)
       out = tf.nn.relu6(out)
     with tf.variable_scope("body") :
       out = self._inverted_bottleneck(out, 6, 16, stride=1)
@@ -88,7 +88,7 @@ class CNN:
 
     # with tf.variable_scope("conv1_relu"):
     #   out0 = self.Conv2D(48, 5)(inputs)
-    #   out0 = self.BN()(out0, training=self.training)
+    #   out0 = self.BN()(out0, training=self.is_training)
     #   out0 = tf.nn.relu6(out0)
 
     # with tf.variable_scope("conv1_relu"):
@@ -97,14 +97,14 @@ class CNN:
 
     # with tf.variable_scope("conv2_relu"):
     #   out = self.Conv2D(48, 5)(out)
-    #   out = self.BN()(out, training=self.training)
+    #   out = self.BN()(out, training=self.is_training)
     #   out = tf.nn.relu6(out)
     # with tf.variable_scope("pool2"):
     #   out = self.Pool2D(3, 3, 'max')(out)
 
     # with tf.variable_scope("conv3_relu"):
     #   out = self.Conv2D(48, 5)(out)
-    #   out = self.BN()(out, training=self.training)
+    #   out = self.BN()(out, training=self.is_training)
     #   out = tf.nn.relu6(out)
     # with tf.variable_scope("pool3"):
     #   out = self.Pool2D(3, 3, 'max')(out)
@@ -116,7 +116,7 @@ class CNN:
     self.feature2rnn = out
     
     with tf.variable_scope("dropout"):
-      out = tl.Dropout(0.5)(out, training=self.training)
+      out = tl.Dropout(0.5)(out, training=self.is_training)
     with tf.variable_scope('fc2'):
       out = self.FC(2)(out)
     # pr_shape(out)
@@ -130,20 +130,20 @@ class CNN:
     # 第一个
     param = layerParam[0]
     out0 = self.Conv2D(param['filters'], param['kernel_sz'], param['strides'])(inputs)
-    out0 = self.BN()(out0, training=self.training)
+    out0 = self.BN()(out0, training=self.is_training)
     out0 = tf.nn.relu6(out0)
 
     # 2 ~ n-1
     for idx in range(1, len(layerParam)-1):
       param = layerParam[idx]
       out0 = self.Conv2D(param['filters'], param['kernel_sz'], param['strides'])(out0)
-      out0 = self.BN()(out0, training=self.training)
+      out0 = self.BN()(out0, training=self.is_training)
       out0 = tf.nn.relu6(out0)
 
     # 第n个
     param = layerParam[-1]
     out0 = self.Conv2D(param['filters'], param['kernel_sz'], param['strides'])(out0)
-    out0 = self.BN()(out0, training=self.training)
+    out0 = self.BN()(out0, training=self.is_training)
     
     conv1x1_stride = 1
     for param in layerParam:
@@ -178,7 +178,7 @@ class CNN:
       # --- 1x1 pointwise
       n_out = rate_channels * n_in
       branch_1 = self.Conv2D(n_out, 1)(x)
-      branch_1 = self.BN()(branch_1, training=self.training)
+      branch_1 = self.BN()(branch_1, training=self.is_training)
       branch_1 = tf.nn.relu6(branch_1)
 
       # --- 3x3 depthwise
@@ -191,12 +191,12 @@ class CNN:
       # b3x3 = b1x1 = tf.get_variable("b3x3", [n_out], initializer=init)
       branch_1 = tf.nn.depthwise_conv2d(branch_1, w3x3, strides=strides_4d,
                                       padding="SAME", data_format=self.data_format)
-      branch_1 = self.BN()(branch_1, training=self.training)
+      branch_1 = self.BN()(branch_1, training=self.is_training)
       branch_1 = tf.nn.relu6(branch_1)
 
       # --- 1x1
       branch_1 = self.Conv2D(channels, 1)(branch_1)
-      branch_1 = self.BN()(branch_1, training=self.training)
+      branch_1 = self.BN()(branch_1, training=self.is_training)
       # print(self.i)
       if stride == 1 and x_channels==channels:
         out = branch_1+branch_0
@@ -228,12 +228,12 @@ class CNN:
           branch_0 = self.Conv2D(channels, 3, stride)(x)
         else :
           branch_0 = self.Conv2D(channels, 1, stride)(x)
-        branch_0 = self.BN()(branch_0, training=self.training)
+        branch_0 = self.BN()(branch_0, training=self.is_training)
 
       # --- 1x1 pointwise
       n_out = rate_channels * x_channels
       branch_1 = self.Conv2D(n_out, 1)(x)
-      branch_1 = self.BN()(branch_1, training=self.training)
+      branch_1 = self.BN()(branch_1, training=self.is_training)
       branch_1 = tf.nn.relu6(branch_1)
 
       # --- 3x3 depthwise
@@ -245,12 +245,12 @@ class CNN:
       # b3x3 = b1x1 = tf.get_variable("b3x3", [n_out], initializer=init)
       branch_1 = tf.nn.depthwise_conv2d(branch_1, w3x3, strides=strides_4d,
                                       padding="SAME", data_format=self.data_format)
-      branch_1 = self.BN()(branch_1, training=self.training)
+      branch_1 = self.BN()(branch_1, training=self.is_training)
       branch_1 = tf.nn.relu6(branch_1)
 
       # --- 1x1
       branch_1 = self.Conv2D(channels, 1)(branch_1)
-      branch_1 = self.BN()(branch_1, training=self.training)
+      branch_1 = self.BN()(branch_1, training=self.is_training)
 
       out = tf.add(branch_0, branch_1)
     self.i += 1

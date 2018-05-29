@@ -113,10 +113,10 @@ def handelVideoFrames(sess, t_imgname, srcDir, dstDir, videoId):
   os.chdir(perFramesDir)
   for jpg in jpglist:
     # logits = sess.run(t_logits, feed_dict= 
-    #     {t_imgname: jpg, model.training: False})
+    #     {t_imgname: jpg, model.is_training: False})
     # print(logits[0])
     feature2rnn = sess.run(model.feature2rnn, feed_dict= 
-        {t_imgname: jpg, model.training: False})
+        {t_imgname: jpg, model.is_training: False})
     # print(feature2rnn[0])
     # print(jpg)
     basename = path.splitext(jpg)[0] # 000011 etc

@@ -8,7 +8,9 @@ from os.path import join as pj
 import tensorflow as tf
 import cv2 as cv
 
-sys.path.append('..')
+cwd = r'/home/hzx/tensorflow_intro_practice'
+cwd = r'E:\github_repo\tensorflow_intro_practice'
+sys.path.append(pj(cwd, 'cnn_rnn'))
 import cnn
 
 # a = '011'
@@ -107,10 +109,10 @@ def handelVideoFrames(sess, inputx, srcDir, dstDir, videoId):
     resized = cv.resize(img, (250, 250)) # w, h
     # print(type(resized[0, 0, 0]))
     # logits = sess.run(t_logits, feed_dict= 
-    #     {inputx: [resized], model.training: False})
+    #     {inputx: [resized], model.is_training: False})
     # print(logits[0])
     feature2rnn = sess.run(model.feature2rnn, feed_dict= 
-        {inputx: [resized], model.training: False})
+        {inputx: [resized], model.is_training: False})
     # print(feature2rnn[0])
     # print(jpg)
     basename = path.splitext(jpg)[0] # 000011 etc
@@ -123,6 +125,8 @@ def tst():
   batch_vec = np.zeros((16,128), np.float)
   f = r'D:\Lab408\cnn_rnn\src_dir\011\000000.jpg'
   img = cv.imread(f)
+  resized = cv.resize(img, (320, 240))
+  print(resized.dtype)
   print(img.shape)
 
   f = r'D:\Lab408\cnn_rnn\dst_dir\011\000054.npy'
@@ -133,5 +137,5 @@ def tst():
   return
 
 if __name__ == '__main__':
-  # tst()
-  main()
+  tst()
+  # main()

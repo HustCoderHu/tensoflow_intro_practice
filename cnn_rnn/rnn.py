@@ -7,7 +7,7 @@ import tensorflow.contrib as tc
 
 class RNN:
   def __init__(self, rnntype, n_hidden, n_classes):
-    self.training = tf.placeholder(tf.bool, [])
+    self.is_training = tf.placeholder(tf.bool, [])
     self.rnntype = rnntype
     self.n_hidden = n_hidden
     self.n_classes = n_classes
