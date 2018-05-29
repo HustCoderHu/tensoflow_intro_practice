@@ -17,7 +17,8 @@ def main():
   log_dir = pj(cwd, 'train_eval_log')
   ckpt_dir = path.join(log_dir, 'ckpts')
 
-  videoRoot = pj(cwd, 'all_data')
+  videoRoot = cf.videoRoot
+  # videoRoot = pj(cwd, 'all_data')
   labeljson = cf.labeljson
   evalSet = cf.evalSet
   # evalSet = [47, 48, 49, 51, 52, 59, 61, 62, 63, 65]
@@ -76,15 +77,17 @@ def main():
   logits = model(inputx, castFromUint8=False)
   with tf.name_scope('cross_entropy'):
     loss = tf.losses.sparse_softmax_cross_entropy(labels, logits)
-    
+
   with tf.name_scope('accuracy'):
     _pred = tf.argmax(logits, axis=1, output_type=tf.int32)
     acc_vec = tf.equal(labels, _pred)
     acc = tf.reduce_mean(tf.cast(acc_vec, tf.float32))
-    
+  
+  update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
   with tf.name_scope('optimizer'):
     optimizer = tf.train.AdamOptimizer(1e-4)
-    train_op = optimizer.minimize(loss, tf.train.get_or_create_global_step())
+    with tf.control_dependencies(update_ops):
+      train_op = optimizer.minimize(loss, tf.train.get_or_create_global_step())
 
   # ||||||||||||||||||||||||||||||  hooks ||||||||||||||||||||||||||||||
   # >>>  logging
@@ -131,7 +134,7 @@ def main():
     iter_dict= iter_dict,
     eval_steps= eval_interval,
     train_op= train_op,
-    training= model.training,
+    training= model.is_training,
     holder_handle= holder_handle,
     summary_conf= summary_conf,
     summary_protobuf= summary_protobuf,
@@ -178,13 +181,13 @@ def main():
     ) as mon_sess:
     while not mon_sess.should_stop():
       step = mon_sess.run(tf.train.get_global_step()) # arg from retval of _EvalHook before_run()
-      # training, step = mon_sess.run([model.training, tf.train.get_global_step()]) # arg from retval of _EvalHook before_run()
+      # training, step = mon_sess.run([model.is_training, tf.train.get_global_step()]) # arg from retval of _EvalHook before_run()
       # if not training:
         # print('step {}: eval xxxxxxxxx'.format(step))
       # print(lr)
   return
 
 if __name__ == '__main__':
-  # main()
-  print(tf.__version__)
+  main()
+  # print(tf.__version__)
 
