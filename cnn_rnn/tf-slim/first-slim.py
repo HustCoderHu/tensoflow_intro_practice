@@ -4,6 +4,11 @@ import os.path as path
 from os.path import join as pj
 from pprint import pprint
 
+try:
+  import urllib2 as urllib
+except ImportError:
+  import urllib.request as urllib
+
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
@@ -12,11 +17,6 @@ import tensorflow.contrib.slim as slim
 
 model_slim = r'D:\github_repo\models\research\slim'
 sys.path.append(model_slim)
-
-try:
-    import urllib2 as urllib
-except ImportError:
-    import urllib.request as urllib
 
 from datasets import imagenet
 from nets import inception
@@ -87,10 +87,11 @@ def mobileNetV2_tst():
     processed_image = inception_preprocessing.preprocess_image(image, image_size, image_size, is_training=False)
     processed_images  = tf.expand_dims(processed_image, 0)
     # print(processed_images.shape)
+    print(processed_images.dtype)
 
     # Create the model, use the default arg scope to configure the batch norm parameters.
-    with slim.arg_scope(inception.inception_v1_arg_scope()):
-      logits, endpoints = mobilenet_v2.mobilenet(processed_images)
+    with slim.arg_scope(mobilenet_v2.training_scope(is_training=False)):
+      global_pool, endpoints = mobilenet_v2.mobilenet(processed_images, num_classes=None)
     # print(type(endpoints))
     # print(len(endpoints.keys()))
     # print(endpoints['layer_18/output'].shape) # (1, 7, 7, 320)
@@ -99,9 +100,11 @@ def mobileNetV2_tst():
     # print(endpoints['global_pool'].shape) # (1, 1, 1, 1280)
     # pprint(endpoints.keys())
 
-    variables_to_restore = slim.get_variables_to_restore(exclude=['MobilenetV2/Logits/Conv2d_1c_1x1'])
-    restorer = tf.train.Saver(variables_to_restore)
+    # variables_to_restore = slim.get_variables_to_restore(exclude=['MobilenetV2/Logits/Conv2d_1c_1x1'])
+    variables_to_restore = slim.get_variables_to_restore()
     print(len(variables_to_restore)) # 260
+    restorer = tf.train.Saver(variables_to_restore)
+
     # print(variables_to_restore)
     
     dropout_keep_prob = 0.5
@@ -109,13 +112,12 @@ def mobileNetV2_tst():
     weight_decay = 0.05
     with tf.variable_scope('addition', 'fc'):
       # flatten = tf.flatten(endpoints['global_pool'])
-      flatten = slim.flatten(endpoints['global_pool'])
-      with slim.arg_scope(
-        [slim.fully_connected],
-        weights_regularizer=slim.l2_regularizer(weight_decay),
-        weights_initializer = tc.layers.xavier_initializer(tf.float32), 
-        # weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
-        activation_fn=tf.nn.relu6) as sc:
+      flatten = slim.flatten(global_pool)
+      with slim.arg_scope([slim.fully_connected],
+          weights_regularizer=slim.l2_regularizer(weight_decay),
+          weights_initializer = tc.layers.xavier_initializer(tf.float32),
+          # weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
+          activation_fn=None) as sc:
         net = slim.fully_connected(flatten, 128, activation_fn=None, scope='fc1')
         net = slim.dropout(net, dropout_keep_prob, is_training=is_training, scope='dropout')
         logits = slim.fully_connected(net, n_classes, activation_fn=None, scope='fc2')
@@ -128,9 +130,11 @@ def mobileNetV2_tst():
     ckptPath = pj(ckptDir, 'mobilenet_v2_1.0_224.ckpt')
 
     # variables_to_restore = slim.get_variables('MobilenetV2/Logits/Conv2d_1c_1x1')
-    variables_to_save = slim.get_variables_to_restore(exclude=['MobilenetV2/Logits/Conv2d_1c_1x1'])
+    # variables_to_save = slim.get_variables_to_restore(exclude=['MobilenetV2/Logits/Conv2d_1c_1x1'])
+    variables_to_save = slim.get_variables_to_restore()
+    print(len(variables_to_save)) # 264 两层 fc 4个参数
     saver = tf.train.Saver(variables_to_save)
-    print(len(variables_to_save)) # 264
+    
     # print(variables_to_save)
     # pprint(variables_to_restore)
     # variables_to_restore = slim.get_model_variables()
@@ -139,22 +143,23 @@ def mobileNetV2_tst():
     op_init1 = tf.variables_initializer(tf.global_variables())
     op_init2 = tf.variables_initializer(tf.local_variables())
     op_group = tf.group(op_init1, op_init2)
-
+    
+    saveto = r'D:\Lab408\tfslim\mobileNetV2-finetue\a2'
+    # ckptPath = saveto
+    # variables_to_restore = variables_to_save
+    saveto = r'D:\Lab408\tfslim\mobileNetV2-finetue\a3'
     init_fn0 = slim.assign_from_checkpoint_fn(ckptPath, variables_to_restore)
     sess_conf = tf.ConfigProto()
     sess_conf.gpu_options.allow_growth = True
     with tf.Session(config= sess_conf) as sess:
-      sess.run(op_group)
+      sess.run(op_group) # fc参数需要初始化
       init_fn0(sess)
-      # Failed to find any matching files for D:\Lab408\tfslim\ckpts\mobilenet_v2_1.0_224.ckpt
-      # restorer.restore(sess, ckptPath)
       np_image, probabilities = sess.run([image, probabilities],
           feed_dict={is_training: False})
       probabilities = probabilities[0, 0:]
       sorted_inds = [i[0] for i in sorted(enumerate(-probabilities), key=lambda x:x[1])]
-      saveto = r'D:\Lab408\tfslim\mobileNetV2-finetue\aa'
-      restorer.save(sess, saveto)
-      # saver.save(sess, saveto)
+      # restorer.save(sess, saveto)
+      saver.save(sess, saveto)
     
     names = imagenet.create_readable_names_for_imagenet_labels()
     for i in range(n_classes):
@@ -162,6 +167,8 @@ def mobileNetV2_tst():
       outstr = 'Probability {:.2%} => {}'.format(probabilities[index], names[index])
       print(outstr)
       # print('Probability %0.2f%% => [%s]' % (probabilities[index] * 100, names[index]))
+    # Probability 62.93% => tench, Tinca tinca
+    # Probability 37.07% => background
     return
 
 def tst1():
