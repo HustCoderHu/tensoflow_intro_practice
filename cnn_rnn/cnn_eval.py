@@ -14,10 +14,10 @@ import var_config as cf
 import dataPreProcess as preProcess
 from EvalDataset import EvalDataset
 import cnn
+import slim_mbnet_v2
 
 cwd = cf.cwd
 labeljson = cf.labeljson
-newVideoRoot = pj(cwd, 'all_data')
 videoRoot = cf.videoRoot
 # labeljson = r'/home/hzx/all_data/label.json'
 
@@ -32,26 +32,31 @@ ckpt_dir = pj(log_dir, 'ckpts')
 # ckpt_dir = r'D:\Lab408\cnn_rnn\20180517\ckpts'
 ckpt_path = pj(ckpt_dir, 'model.ckpt-1800')
 ckpt_path = pj(ckpt_dir, 'model.ckpt-1200')
-
+ckpt_path = pj(ckpt_dir, 'model.ckpt-5600')
 
 model = None
 
-batchsz = 100
+batchsz = 60
 
 def handleAllVideos():
   if not path.exists(pureEval):
     os.mkdir(pureEval)
-
-  videoSet = cf.trainSet
   
-  for videoIdx in range(1, 82):
-    if videoIdx in videoSet:
-      videoSet.remove(videoIdx)
-  print(videoSet)
-  for videoIdx in videoSet:
+  MAX_PARALLEL = 4
+  processSet = []
+  for videoIdx in cf.wholeSet:
     p = Process(target=forwardVideoLoss, args=(videoIdx,))
     p.start()
-    p.join()
+    processSet.append(p)
+    if len(processSet) < MAX_PARALLEL:
+      continue
+    else :
+      for p in processSet:
+        p.join()
+      processSet.clear()
+  
+  print('finish handleAllVideos')
+  return
 
 # 计算每帧的loss
 def forwardVideoLoss(videoIdx):
@@ -67,14 +72,16 @@ def forwardVideoLoss(videoIdx):
   _h = 240
   _w = 320
   dset = EvalDataset(videoRoot, videoIdx, labeljson, resize=(_h, _w))
-  dset.setEvalParams(100, prefetch=10, cacheFile=None)
+  dset.setEvalParams(batchsz, prefetch=10, cacheFile=None)
   iterator = dset.makeIter()
   resized, labels, t_filenames = iterator.get_next()
+  inputx = tf.reshape(resized, [-1, _h, _w, 3])
   
   # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ build graph \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
-  model = cnn.CNN('NCHW')
+  # model = cnn.CNN('NCHW')
   # The channel dimension of the inputs should be defined. Found `None`.
-  inputx = tf.reshape(resized, [-1, _h, _w, 3])
+  # logits = model(inputx, castFromUint8=False)
+  model = slim_mbnet_v2.MyNetV2(n_classes=2)
   logits = model(inputx, castFromUint8=False)
   
   with tf.name_scope('prediction'):
@@ -112,7 +119,7 @@ def forwardVideoLoss(videoIdx):
       try:
         loss, batchConfidence, pred, batchFilenames = sess.run(
             [t_loss, t_pred_softmax, t_pred, t_filenames], 
-            feed_dict={model.training: False})
+            feed_dict={model.is_training: False})
         nFrames = loss.shape[0]
         for i in range(nFrames):
           frameConf = batchConfidence[i]
@@ -140,12 +147,12 @@ def forwardVideoLoss(videoIdx):
 # 计算每个视频精度，以及整体精度 输出到json文件
 def acc2file(labeljson):
   labeldict = preProcess.decodeLabel(labeljson)
-  tofile = pj(cwd, 'acc.json')
-
+  # trainset
+  tofile = pj(cwd, 'acc.train.json')
   statistic = {}
   totalHit = 0
   totalFrames = 0
-  for videoIdx in range(1, 111):
+  for videoIdx in cf.trainSet:
     hit, frames, acc = computeAccuray(labeldict, videoIdx)
     alog = {'hit': hit, 'frames': frames, 'acc': acc}
     statistic[videoIdx] = alog
@@ -155,6 +162,23 @@ def acc2file(labeljson):
   statistic['total'] = {'hit': totalHit, 'frames': totalFrames, 
       'acc': totalHit / totalFrames}
   pprint(statistic)
+
+  # trainset
+  tofile = pj(cwd, 'acc.eval.json')
+  statistic = {}
+  totalHit = 0
+  totalFrames = 0
+  for videoIdx in cf.evalSet:
+    hit, frames, acc = computeAccuray(labeldict, videoIdx)
+    alog = {'hit': hit, 'frames': frames, 'acc': acc}
+    statistic[videoIdx] = alog
+    # 累计
+    totalHit += hit
+    totalFrames += frames
+  statistic['total'] = {'hit': totalHit, 'frames': totalFrames, 
+      'acc': totalHit / totalFrames}
+  pprint(statistic)
+
   # with open(tofile, 'w') as f:
     # json.dump(statistic, f)
   return
@@ -330,9 +354,8 @@ if __name__ == '__main__':
   #   os.mkdir(pureEval)
   # videoIdxSet = range(83, 111)
   # forwardVideoLoss(2)
-  handleAllVideos()
-  print('aaaaa')
-  # acc2file(labeljson)
+  # handleAllVideos()
+  acc2file(labeljson)
   # framesLoss2tfboard(videoIdxSet)
 
 class FramePreprocessPolicy(object):
