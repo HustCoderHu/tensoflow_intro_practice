@@ -11,13 +11,15 @@ CNN 提取特征形成序列输入到 RNN 中
 因为相似度高，实际样本的数量远小于总帧数，需要引入一些变化  
 暂时采取 `resize_image_with_crop_or_pad` + `随机水平翻转`
 
-`sample_distorted_bounding_box` 可能导致切块太小
 
 ## 1.2 TRAIN and EVAL
+20180601 **TODO**  
+- 展示隐藏层生成的特征图
+
 20180518 **TODO**
 - 全集精度
   - 直接在完整测试集上一次前向，计算整体精度
-- acc group by video
+- AVG(acc) group by video
   - 视频帧间具有相似性，统计每个视频的整体精度，可能会有发现。  
   - 实现方式
     > 基于上面的全集测试，label.json里只保留要统计的视频，执行一次前向，可以考虑记录每帧的分析结果(可信度)
