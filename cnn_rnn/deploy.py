@@ -125,7 +125,7 @@ def handelVideo(cnn_sess, rnn_sess, videoPath, logFile=None):
   fps = cap.get(cv.CAP_PROP_FPS) # float
   print(type(fps))
   height = cap.get(cv.CAP_PROP_FRAME_HEIGHT)
-  width = cv.CAP_PROP_FRAME_WIDTH
+  width = cap.get(cv.CAP_PROP_FRAME_WIDTH)
   prePolicy = FramePreprocessPolicy((height, width), (250, 250))
   print('frame_count: {}'.format(frame_count))
   print('fps: {}'.format(fps))
@@ -142,10 +142,10 @@ def handelVideo(cnn_sess, rnn_sess, videoPath, logFile=None):
     frameIdx += frameOffset
     # feature2rnn, pred_avg = cnn_sess.run(
     #     [cnn_model.feature2rnn, t_pred_avg],
-    #     feed_dict={t_clip: batchFrame, cnn_model.training: False})
+    #     feed_dict={t_clip: batchFrame, cnn_model.is_training: False})
     feature2rnn, pred_avg, cnn_out_avg = cnn_sess.run(
         [cnn_model.feature2rnn, t_pred_avg, t_cnn_out_avg],
-        feed_dict={t_clip: batchFrame, cnn_model.training: False})
+        feed_dict={t_clip: batchFrame, cnn_model.is_training: False})
     # 触发高频采样
     fire_confidence = pred_avg[cnn_label['fire']]
     if fire_confidence >= trigger_rnn['HIGH']:
@@ -156,7 +156,7 @@ def handelVideo(cnn_sess, rnn_sess, videoPath, logFile=None):
     # 目前处在火势分析流程中
     if freq == HIGH_FREQ:
       rnn_pred = rnn_sess.run(t_rnn_pred,
-          feed_dict={t_feature2rnn: [feature2rnn], rnn_model.training: False})
+          feed_dict={t_feature2rnn: [feature2rnn], rnn_model.is_training: False})
       rnn_pred = rnn_pred[0]
     else:
       rnn_pred = None
